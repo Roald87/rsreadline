@@ -9,10 +9,7 @@ pub fn load_entries(path: &Path) -> Vec<String> {
 fn parse_entries(text: &str) -> Vec<String> {
     text.lines()
         .filter(|line| !is_timestamp_comment(line))
-        // Trailing whitespace (e.g. a stray space typed before Enter, or a
-        // CRLF-terminated history file leaving a \r) makes two otherwise
-        // identical commands look like distinct entries to matcher::suggest's
-        // exact-string dedup, showing up as visually-duplicate suggestions.
+        // Normalize away trailing whitespace so dedup treats these as equal.
         .map(|line| line.trim_end().to_string())
         .collect()
 }
@@ -57,10 +54,6 @@ mod tests {
 
     #[test]
     fn trailing_whitespace_is_trimmed() {
-        // A command run once cleanly and once with a stray trailing space
-        // typed before Enter must normalize to the same entry, otherwise
-        // matcher::suggest's exact-string dedup treats them as distinct and
-        // shows what looks like the same suggestion twice.
         let text = "bundle exec jekyll serve\nbundle exec jekyll serve \n";
         assert_eq!(
             parse_entries(text),
