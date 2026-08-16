@@ -100,7 +100,8 @@ mod tests {
 
     #[test]
     fn all_keys_set() {
-        let text = "history_file = ~/custom_history\nmax_suggestions = 3\nmin_terminal_height = 20\n";
+        let text =
+            "history_file = ~/custom_history\nmax_suggestions = 3\nmin_terminal_height = 20\n";
         let cfg = Config::parse(text, Some(&home()));
         assert_eq!(cfg.history_file, home().join("custom_history"));
         assert_eq!(cfg.max_suggestions, 3);

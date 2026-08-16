@@ -53,6 +53,9 @@ mod tests {
 
     #[test]
     fn missing_file_yields_no_entries() {
-        assert_eq!(load_entries(Path::new("/nonexistent/path/that/does/not/exist")), Vec::<String>::new());
+        assert_eq!(
+            load_entries(Path::new("/nonexistent/path/that/does/not/exist")),
+            Vec::<String>::new()
+        );
     }
 }

@@ -54,7 +54,10 @@ mod tests {
         let entries = entries(&["cargo build", "build cargo"]);
         // "build cargo" contains "cargo" but doesn't start with it;
         // "cargo build" starts with "cargo".
-        assert_eq!(suggest(&entries, "cargo", 5), vec!["cargo build", "build cargo"]);
+        assert_eq!(
+            suggest(&entries, "cargo", 5),
+            vec!["cargo build", "build cargo"]
+        );
     }
 
     #[test]
@@ -63,7 +66,10 @@ mod tests {
         // "git status" appears twice; only its most recent occurrence (index 2)
         // should be kept, and it should come after "git commit" was typed later
         // than the first "git status" but before the second.
-        assert_eq!(suggest(&entries, "git", 5), vec!["git status", "git commit"]);
+        assert_eq!(
+            suggest(&entries, "git", 5),
+            vec!["git status", "git commit"]
+        );
     }
 
     #[test]

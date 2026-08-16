@@ -17,7 +17,10 @@ fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         ["render", line, point, selected, direction] => {
-            print!("{}", cmd_render(&Config::load(), line, point, selected, direction));
+            print!(
+                "{}",
+                cmd_render(&Config::load(), line, point, selected, direction)
+            );
             ExitCode::SUCCESS
         }
         ["complete", line, point, selected] => {
@@ -25,7 +28,9 @@ fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         _ => {
-            eprintln!("usage: rsreadline <init bash | render <line> <point> <selected> <direction> | complete <line> <point> <selected>>");
+            eprintln!(
+                "usage: rsreadline <init bash | render <line> <point> <selected> <direction> | complete <line> <point> <selected>>"
+            );
             ExitCode::FAILURE
         }
     }
