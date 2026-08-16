@@ -22,7 +22,7 @@ impl Config {
         Self::parse(&text, home.as_deref())
     }
 
-    fn parse(text: &str, home: Option<&Path>) -> Self {
+    pub(crate) fn parse(text: &str, home: Option<&Path>) -> Self {
         let mut cfg = Self::defaults(home);
         for line in text.lines() {
             let line = line.trim();

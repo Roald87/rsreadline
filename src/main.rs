@@ -1,3 +1,4 @@
+mod bashgen;
 mod config;
 mod history;
 mod matcher;
