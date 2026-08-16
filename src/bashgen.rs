@@ -19,75 +19,21 @@ pub fn generate(config: &Config) -> String {
     lines.push(r#"bind '"\e[B": next-history'"#.to_string());
     lines.push(String::new());
 
-    // ------------------------------------------------------------------
-    // Why this trap exists (read this before touching anything below):
-    //
-    // bash's `bind -x` can replace what a *key* does, but it cannot hook
-    // "the line was just accepted and is about to run" — that event is
-    // handled entirely inside bash's own accept-line/execute-command
-    // machinery, which `bind -x` has no access to. Concretely: we deliberately
-    // do NOT bind Enter (see the top-level design notes for why intercepting
-    // Enter is a dead end — you cannot both intercept it AND still trigger
-    // bash's real submission from a bind -x handler). That means the
-    // suggestion block we drew below the cursor is still sitting on screen,
-    // untouched, at the exact moment your command starts producing its own
-    // output. If that output is shorter than the leftover suggestion text
-    // was wide, the two visually merge — e.g. a real error message ending up
-    // with garbage like "ve --" glued onto it, which is leftover suggestion
-    // text nothing ever cleared.
-    //
-    // `PROMPT_COMMAND` (see __rsreadline_prompt_reset far below) cleans the
-    // block up, but only runs before the *next* prompt — i.e. after your
-    // command has already finished and had every chance to collide with the
-    // stale text. We need something that fires in the gap *between* Enter
-    // being accepted and your command's first line of real output.
-    //
-    // bash's `DEBUG` trap is that something: `trap CMD DEBUG` runs CMD
-    // immediately before every simple command bash is about to execute —
-    // including the one you just typed and hit Enter on. This is the same
-    // primitive the community `bash-preexec` project builds "preexec" hooks
-    // out of for other tools.
-    //
-    // The catch (verified empirically, not just from docs — see the plan/
-    // commit history): the DEBUG trap ALSO fires before every command
-    // *inside* our own bind -x handler functions (self-insert, backspace,
-    // tab, up/down each run several internal commands apiece). If we clear
-    // the block unconditionally on every DEBUG firing, we'd also clear it
-    // repeatedly *while you're still typing*, before our own handler gets a
-    // chance to redraw it — not corruption, but wasteful and a flicker risk.
-    //
-    // The fix is `_RSREADLINE_BUSY`: every one of our own bind -x entry
-    // points (__rsreadline_insert/backspace/tab/up/down) sets it to 1 for
-    // the duration of its own work and back to 0 when done. The preexec
-    // handler below skips clearing whenever that flag is set, so it only
-    // ever actually fires for commands bash runs on ITS OWN behalf — i.e.
-    // your real, just-submitted command line — not for our internal
-    // bookkeeping.
-    //
-    // One known, accepted imprecision: DEBUG fires before the very FIRST
-    // statement of each handler too, at which point that handler hasn't set
-    // the flag yet (it can't — that assignment IS the first statement). So
-    // there's one spurious clear right at the start of handling each
-    // keystroke. This is harmless: every handler's own final action is
-    // always a fresh, correct redraw (via __rsreadline_update), which
-    // overwrites that spurious clear within the same handler invocation,
-    // faster than a terminal could ever visibly flicker. It's a real,
-    // understood trade-off for keeping this guard a single flag instead of
-    // a much more elaborate (and fragile) "is this command text one of ours"
-    // pattern-matcher.
-    // ------------------------------------------------------------------
-    lines.push("# See the long comment above for why this function and the".to_string());
-    lines.push("# `trap ... DEBUG` line below it exist.".to_string());
+    // Enter is never rebound (bind -x can't intercept it and still trigger
+    // bash's own accept-line), so without this, the suggestion block would
+    // sit on screen, stale, for as long as the submitted command runs. This
+    // DEBUG trap fires right before that command executes and clears it.
+    // _RSREADLINE_BUSY guards against it also firing (and clearing) during
+    // our own handlers' internal commands, not just the user's. Full
+    // rationale in ARCHITECTURE.md ("Enter and the DEBUG-trap preexec hook").
+    lines.push("# See ARCHITECTURE.md (\"Enter and the DEBUG-trap preexec hook\")".to_string());
+    lines.push("# for why this function and the trap below it exist.".to_string());
     lines.push("__rsreadline_preexec() {".to_string());
     lines.push("    # Skip while one of our own handlers is still running —".to_string());
     lines.push("    # it owns the block and will redraw it itself when done.".to_string());
     lines.push("    [[ \"$_RSREADLINE_BUSY\" == 1 ]] && return".to_string());
     lines.push(format!("    printf '%s' {clear_seq} > /dev/tty"));
     lines.push("}".to_string());
-    lines.push("# Fires immediately before every command bash is about to run,".to_string());
-    lines.push("# including your just-submitted command line — this is what lets".to_string());
-    lines.push("# us clear the suggestion block before that command's own output".to_string());
-    lines.push("# can collide with it. See the comment block above.".to_string());
     lines.push("trap __rsreadline_preexec DEBUG".to_string());
     lines.push(String::new());
 
