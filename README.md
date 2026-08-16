@@ -1,14 +1,14 @@
 # rsreadline
 
 Live, PSReadline-style command suggestions for bash, built against your
-`.bash_history`. Single zero-dependency Rust binary; no color, plain text,
-wired into bash via `bind -x` — bash keeps doing all normal prompting,
-history, and job control.
+`.bash_history`. Single zero-dependency Rust binary, wired into bash via
+`bind -x` — bash keeps doing all normal prompting, history, and job control.
 
 While you type, up to 5 matching history entries are shown on the lines
-below the prompt. Tab completes the selected suggestion; Up/Down cycle
-through suggestions when any are shown, otherwise they fall back to bash's
-own history browsing.
+below the prompt, with the selected one shown in reverse video (no fixed
+color, so it can't clash with your terminal theme). Tab completes the
+selected suggestion; Up/Down cycle through suggestions when any are shown,
+otherwise they fall back to bash's own history browsing.
 
 ## Build
 
@@ -63,8 +63,8 @@ cargo fmt --all -- --check
 1. In a real terminal ≥15 rows: `eval "$(./target/release/rsreadline init bash)"`
 2. Point `history_file` at a sample history with known entries; start typing a
    known prefix → up to 5 matches render below the current line
-3. Press Down/Up repeatedly → the `> ` marker moves between suggestions and
-   wraps
+3. Press Down/Up repeatedly → the reverse-video highlight moves between
+   suggestions and wraps
 4. Press Tab → the line becomes the selected suggestion, cursor at end
 5. Clear the line (Ctrl-U), press Up/Down → falls back to bash's own native
    history browsing
@@ -78,7 +78,8 @@ cargo fmt --all -- --check
 
 ## Known v1 limitations
 
-- No color; the selected suggestion is marked with a plain `> ` prefix
+- The selected suggestion is highlighted with reverse video, not a fixed
+  color, so it can't clash with a terminal theme
 - Matching is substring, ranked prefix-first, most-recent-first within each
   rank — not fuzzy
 - Enter is intentionally never rebound (bind -x can't intercept a key and

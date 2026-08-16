@@ -5,8 +5,10 @@ use std::os::fd::AsRawFd;
 const SAVE_CURSOR: &str = "\x1b7";
 const RESTORE_CURSOR: &str = "\x1b8";
 const CLEAR_LINE: &str = "\x1b[2K\r";
-const SELECTED_MARKER: &str = "> ";
-const UNSELECTED_MARKER: &str = "  ";
+// Reverse video rather than a fixed color: it inverts whatever foreground/
+// background the user's own terminal theme already has, so it can't clash.
+const REVERSE_VIDEO_START: &str = "\x1b[7m";
+const REVERSE_VIDEO_END: &str = "\x1b[0m";
 pub const HEIGHT_WARNING: &str = "rsreadline: suggestions hidden (terminal too short)";
 
 /// Linux TIOCGWINSZ ioctl request number (stable across x86_64/aarch64).
@@ -53,13 +55,13 @@ pub fn render_sequence(lines: &[String], selected: usize, block_size: usize) -> 
         out.push('\n');
         out.push_str(CLEAR_LINE);
         if let Some(line) = lines.get(i) {
-            let marker = if i == selected {
-                SELECTED_MARKER
+            if i == selected {
+                out.push_str(REVERSE_VIDEO_START);
+                out.push_str(line);
+                out.push_str(REVERSE_VIDEO_END);
             } else {
-                UNSELECTED_MARKER
-            };
-            out.push_str(marker);
-            out.push_str(line);
+                out.push_str(line);
+            }
         }
     }
     out.push_str(RESTORE_CURSOR);
@@ -113,15 +115,15 @@ mod tests {
         let seq = render_sequence(&lines, 0, 3);
         // one selected line with content, two blank cleared lines
         assert_eq!(seq.matches(CLEAR_LINE).count(), 3);
-        assert!(seq.contains("> ls -la"));
+        assert!(seq.contains(&format!("{REVERSE_VIDEO_START}ls -la{REVERSE_VIDEO_END}")));
     }
 
     #[test]
     fn render_sequence_marks_selected_line() {
         let lines = vec!["a".to_string(), "b".to_string()];
         let seq = render_sequence(&lines, 1, 2);
-        assert!(seq.contains("  a"));
-        assert!(seq.contains("> b"));
+        assert!(!seq.contains(&format!("{REVERSE_VIDEO_START}a")));
+        assert!(seq.contains(&format!("{REVERSE_VIDEO_START}b{REVERSE_VIDEO_END}")));
     }
 
     #[test]
