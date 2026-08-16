@@ -81,8 +81,15 @@ cargo fmt --all -- --check
 - No color; the selected suggestion is marked with a plain `> ` prefix
 - Matching is substring, ranked prefix-first, most-recent-first within each
   rank — not fuzzy
-- A brief stale-suggestion-line glimpse is possible right after pressing
-  Enter (see [Key mechanics #6] — Enter is intentionally not intercepted)
+- Enter is intentionally never rebound (bind -x can't intercept a key and
+  still trigger bash's own accept-line). A `DEBUG` trap-based preexec hook
+  clears the suggestion block right before your submitted command starts
+  running, closing the window where its own output could collide with
+  leftover suggestion text — see the "Why this trap exists" comment in the
+  `init bash` output for the full mechanism. Not a hard guarantee for every
+  possible bash internal quirk, but the corruption seen in early live testing
+  (e.g. a real error message ending up with stray suggestion-text characters
+  glued onto it) should no longer occur in normal use
 - Near the bottom of the terminal, drawing the block can still trigger a
   scroll that breaks the cursor save/restore trick, even above
   `min_terminal_height`
