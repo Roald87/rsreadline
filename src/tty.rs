@@ -4,6 +4,11 @@ use std::os::fd::AsRawFd;
 
 const SAVE_CURSOR: &str = "\x1b7";
 const RESTORE_CURSOR: &str = "\x1b8";
+// Cursor Down (CUD), not a bare "\n": CUD clamps at the bottom row instead
+// of scrolling the screen. A linefeed at the bottom margin scrolls, which
+// silently invalidates SAVE_CURSOR/RESTORE_CURSOR's saved absolute position
+// (they don't track scroll offset), corrupting nearby output.
+const CURSOR_DOWN_1: &str = "\x1b[1B";
 const CLEAR_LINE: &str = "\x1b[2K\r";
 // Reverse video rather than a fixed color: it inverts whatever foreground/
 // background the user's own terminal theme already has, so it can't clash.
@@ -52,7 +57,7 @@ pub fn should_render(rows: u16, min_height: u16) -> bool {
 pub fn render_sequence(lines: &[String], selected: usize, block_size: usize) -> String {
     let mut out = String::from(SAVE_CURSOR);
     for i in 0..block_size {
-        out.push('\n');
+        out.push_str(CURSOR_DOWN_1);
         out.push_str(CLEAR_LINE);
         if let Some(line) = lines.get(i) {
             if i == selected {
@@ -73,7 +78,7 @@ pub fn render_sequence(lines: &[String], selected: usize, block_size: usize) -> 
 pub fn clear_sequence(block_size: usize) -> String {
     let mut out = String::from(SAVE_CURSOR);
     for _ in 0..block_size {
-        out.push('\n');
+        out.push_str(CURSOR_DOWN_1);
         out.push_str(CLEAR_LINE);
     }
     out.push_str(RESTORE_CURSOR);
@@ -83,7 +88,7 @@ pub fn clear_sequence(block_size: usize) -> String {
 /// Builds the single-line escape sequence shown in place of the block when
 /// the terminal is too short for `min_terminal_height`.
 pub fn warning_sequence(message: &str) -> String {
-    format!("{SAVE_CURSOR}\n{CLEAR_LINE}{message}{RESTORE_CURSOR}")
+    format!("{SAVE_CURSOR}{CURSOR_DOWN_1}{CLEAR_LINE}{message}{RESTORE_CURSOR}")
 }
 
 pub fn write_to_tty(sequence: &str) -> io::Result<()> {
@@ -140,5 +145,16 @@ mod tests {
         assert!(seq.ends_with(RESTORE_CURSOR));
         assert!(seq.contains(HEIGHT_WARNING));
         assert_eq!(seq.matches(CLEAR_LINE).count(), 1);
+    }
+
+    // A bare '\n' scrolls the screen when the cursor is already on the
+    // bottom row, which silently invalidates SAVE_CURSOR/RESTORE_CURSOR's
+    // saved position — see CURSOR_DOWN_1's doc comment. None of our
+    // sequences may use one for vertical movement.
+    #[test]
+    fn no_sequence_uses_a_bare_linefeed_to_move_down() {
+        assert!(!render_sequence(&["x".to_string()], 0, 3).contains('\n'));
+        assert!(!clear_sequence(3).contains('\n'));
+        assert!(!warning_sequence(HEIGHT_WARNING).contains('\n'));
     }
 }

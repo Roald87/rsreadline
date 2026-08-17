@@ -67,8 +67,8 @@ type `'`, `"`, `\`, `` ` ``, `$` to check they still insert correctly.
 - Enter is never rebound, so there's a brief window between submitting a
   command and its output starting where stale suggestion text could still be
   visible; a preexec hook closes most of that window but not every edge case
-- Rendering near the very bottom of the terminal can still glitch even above
-  `min_terminal_height`
+- Long suggestion lines that wrap onto a second terminal row aren't accounted
+  for in the block's height math
 - `PROMPT_COMMAND` is assumed to be a plain string, not bash 5.1+'s array form
 
 See `ARCHITECTURE.md` for why it's built this way.

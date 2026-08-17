@@ -105,6 +105,12 @@ A fixed `max_suggestions`-line block is always drawn below the cursor
 leaves stale text behind. Escape sequences go to `/dev/tty` directly, not
 stdout, since stdout carries return values back to the bash glue in some of
 these subcommands. Below `min_terminal_height`, a single warning line
-replaces the block rather than going silent. Near the very bottom of the
-terminal, drawing can still trigger a scroll that breaks the cursor
-save/restore trick — a known, unsolved limitation.
+replaces the block rather than going silent.
+
+Downward movement uses Cursor Down (`ESC[nB`), not a bare `\n`. A linefeed
+at the terminal's bottom margin scrolls the whole screen — which silently
+invalidates `SAVE_CURSOR`/`RESTORE_CURSOR`'s saved *absolute* position, since
+neither tracks the scroll offset. This caused real corruption in live
+testing (a warning message showing up with only its tail surviving,
+overwritten by bash's next redraw). `ESC[nB` clamps at the bottom row
+instead of scrolling, so it doesn't trigger the problem in the first place.
