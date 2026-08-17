@@ -69,7 +69,7 @@ fn draw(config: &Config, matches: &[String], selected: usize) {
     let sequence = if tty::should_render(rows, config.min_terminal_height) {
         tty::render_sequence(matches, selected, config.max_suggestions)
     } else {
-        tty::warning_sequence(tty::HEIGHT_WARNING)
+        tty::warning_sequence(&tty::height_warning(config.min_terminal_height))
     };
     let _ = tty::write_to_tty(&sequence);
 }

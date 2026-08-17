@@ -14,7 +14,9 @@ const CLEAR_LINE: &str = "\x1b[2K\r";
 // background the user's own terminal theme already has, so it can't clash.
 const REVERSE_VIDEO_START: &str = "\x1b[7m";
 const REVERSE_VIDEO_END: &str = "\x1b[0m";
-pub const HEIGHT_WARNING: &str = "rsreadline: suggestions hidden (terminal too short)";
+pub fn height_warning(min_height: u16) -> String {
+    format!("rsreadline: hidden, need {min_height} rows")
+}
 
 /// Linux TIOCGWINSZ ioctl request number (stable across x86_64/aarch64).
 const TIOCGWINSZ: u64 = 0x5413;
@@ -140,11 +142,18 @@ mod tests {
 
     #[test]
     fn warning_sequence_contains_the_message() {
-        let seq = warning_sequence(HEIGHT_WARNING);
+        let message = height_warning(15);
+        let seq = warning_sequence(&message);
         assert!(seq.starts_with(SAVE_CURSOR));
         assert!(seq.ends_with(RESTORE_CURSOR));
-        assert!(seq.contains(HEIGHT_WARNING));
+        assert!(seq.contains(&message));
         assert_eq!(seq.matches(CLEAR_LINE).count(), 1);
+    }
+
+    #[test]
+    fn height_warning_includes_the_configured_minimum() {
+        assert!(height_warning(15).contains("15"));
+        assert!(height_warning(20).contains("20"));
     }
 
     // A bare '\n' scrolls the screen when the cursor is already on the
@@ -155,6 +164,6 @@ mod tests {
     fn no_sequence_uses_a_bare_linefeed_to_move_down() {
         assert!(!render_sequence(&["x".to_string()], 0, 3).contains('\n'));
         assert!(!clear_sequence(3).contains('\n'));
-        assert!(!warning_sequence(HEIGHT_WARNING).contains('\n'));
+        assert!(!warning_sequence(&height_warning(15)).contains('\n'));
     }
 }
