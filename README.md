@@ -31,6 +31,15 @@ eval "$(rsreadline init bash)"
 
 Requires a terminal at least 15 lines tall (configurable).
 
+## Uninstall
+
+Remove the `eval "$(rsreadline init bash)"` line from `.bashrc`, then:
+
+```sh
+rm ~/.local/bin/rsreadline
+rm -rf ~/.config/rsreadline   # if you had a config.toml
+```
+
 ## Config
 
 `~/.config/rsreadline/config.toml`, all fields optional:
