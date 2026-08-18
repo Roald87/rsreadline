@@ -18,7 +18,14 @@ pub fn generate(config: &Config) -> String {
     // any bind/bind -x we issue for it — see ARCHITECTURE.md
     // ("Why bind-tty-special-chars is off") for how this was diagnosed.
     lines.push("bind 'set bind-tty-special-chars off'".to_string());
-    lines.push("_RSREADLINE_SEL=0".to_string());
+    // Empty _RSREADLINE_SEL means "nothing selected" — suggestions appear
+    // unselected as you type; only Up/Down picks one. _RSREADLINE_QUERY is
+    // what you actually typed, kept separate from READLINE_LINE because
+    // Up/Down overwrites READLINE_LINE with a selection preview, and
+    // cycling needs to keep matching against the real typed text, not that
+    // preview. See ARCHITECTURE.md ("Selecting a suggestion").
+    lines.push("_RSREADLINE_SEL=\"\"".to_string());
+    lines.push("_RSREADLINE_QUERY=\"\"".to_string());
     lines.push("_RSREADLINE_BUSY=0".to_string());
     lines.push(r#"bind '"\e[A": previous-history'"#.to_string());
     lines.push(r#"bind '"\e[B": next-history'"#.to_string());
@@ -43,12 +50,32 @@ pub fn generate(config: &Config) -> String {
     lines.push(String::new());
 
     lines.push("__rsreadline_update() {".to_string());
-    lines.push("    local direction=\"$1\" result sel count".to_string());
+    lines.push("    local direction=\"$1\" query point result sel count fill".to_string());
+    lines.push("    if [[ \"$direction\" == none ]]; then".to_string());
+    lines.push("        _RSREADLINE_QUERY=\"$READLINE_LINE\"".to_string());
+    lines.push("        query=\"$READLINE_LINE\"".to_string());
+    lines.push("        point=\"$READLINE_POINT\"".to_string());
+    lines.push("    else".to_string());
+    lines.push("        query=\"$_RSREADLINE_QUERY\"".to_string());
+    lines.push("        point=${#_RSREADLINE_QUERY}".to_string());
+    lines.push("    fi".to_string());
     lines.push(format!(
-        "    result=$({exe_q} render \"$READLINE_LINE\" \"$READLINE_POINT\" \"$_RSREADLINE_SEL\" \"$direction\")"
+        "    result=$({exe_q} render \"$query\" \"$point\" \"$_RSREADLINE_SEL\" \"$direction\")"
     ));
-    lines.push("    IFS=$'\\t' read -r sel count <<< \"$result\"".to_string());
-    lines.push("    _RSREADLINE_SEL=\"${sel:-0}\"".to_string());
+    // \x01 (SOH), not a tab: bash's `read` treats IFS whitespace characters
+    // (space/tab/newline) as collapsible even with a custom IFS, silently
+    // dropping empty fields anywhere but the very end — verified directly:
+    // `IFS=$'\t' read -r a b c <<< $'\t3\t'` gives a=3 b= c=, not a= b=3 c=.
+    // Since `sel`/`fill` are legitimately empty on most calls (nothing
+    // selected / no fill), tab-splitting silently corrupted them. \x01
+    // can't plausibly appear in real command text and isn't whitespace, so
+    // `read` splits on it literally.
+    lines.push("    IFS=$'\\x01' read -r sel count fill <<< \"$result\"".to_string());
+    lines.push("    _RSREADLINE_SEL=\"$sel\"".to_string());
+    lines.push("    if [[ -n \"$fill\" ]]; then".to_string());
+    lines.push("        READLINE_LINE=\"$fill\"".to_string());
+    lines.push("        READLINE_POINT=${#READLINE_LINE}".to_string());
+    lines.push("    fi".to_string());
     lines.push("    if [[ \"${count:-0}\" -gt 0 ]]; then".to_string());
     lines.push(r#"        bind -x '"\e[A": __rsreadline_up'"#.to_string());
     lines.push(r#"        bind -x '"\e[B": __rsreadline_down'"#.to_string());
@@ -109,11 +136,17 @@ pub fn generate(config: &Config) -> String {
     lines.push(format!(
         "    local result=$({exe_q} complete \"$READLINE_LINE\" \"$READLINE_POINT\" \"$_RSREADLINE_SEL\")"
     ));
+    // Only redraw when a completion actually happened. If nothing did —
+    // either no match, or (per cmd_complete) a suggestion was already
+    // selected — leave the block exactly as it was; Tab is a no-op once
+    // something is selected, and calling __rsreadline_update none here
+    // unconditionally would still clear that selection as a side effect
+    // even though the line itself didn't change.
     lines.push("    if [[ -n \"$result\" ]]; then".to_string());
     lines.push("        READLINE_LINE=\"$result\"".to_string());
     lines.push("        READLINE_POINT=${#READLINE_LINE}".to_string());
+    lines.push("        __rsreadline_update none".to_string());
     lines.push("    fi".to_string());
-    lines.push("    __rsreadline_update none".to_string());
     lines.push("    _RSREADLINE_BUSY=0".to_string());
     lines.push("}".to_string());
     lines.push(String::new());
@@ -136,7 +169,8 @@ pub fn generate(config: &Config) -> String {
     lines.push("    # mid-call), don't let the preexec guard stay stuck off forever.".to_string());
     lines.push("    _RSREADLINE_BUSY=0".to_string());
     lines.push(format!("    printf '%s' {clear_seq} > /dev/tty"));
-    lines.push("    _RSREADLINE_SEL=0".to_string());
+    lines.push("    _RSREADLINE_SEL=\"\"".to_string());
+    lines.push("    _RSREADLINE_QUERY=\"\"".to_string());
     lines.push(r#"    bind '"\e[A": previous-history'"#.to_string());
     lines.push(r#"    bind '"\e[B": next-history'"#.to_string());
     lines.push("}".to_string());

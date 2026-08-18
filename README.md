@@ -3,10 +3,12 @@
 Live, PSReadline-style command suggestions for bash, built against your
 `.bash_history`. Zero-dependency Rust binary, wired into bash via `bind -x`.
 
-While you type, up to 5 matching history entries show below the prompt, with
-the selected one in reverse video. Tab completes it; Up/Down cycle through
-suggestions, or fall back to bash's normal history browsing when none are
-shown.
+While you type, up to 5 matching history entries show below the prompt,
+none selected. Tab completes the top match. Up/Down select a suggestion
+(shown in reverse video, and filled into the line as a preview) and cycle
+through the rest; Enter submits whatever's currently in the line, so it
+confirms the selection. With nothing selected, Up/Down fall back to bash's
+normal history browsing; Tab is a no-op once something is selected.
 
 ## Build
 

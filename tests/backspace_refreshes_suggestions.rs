@@ -37,15 +37,15 @@ fn backspace_triggers_our_handler_and_refreshes_suggestions() {
         "backspace produced only bash's default erase output — our bind -x handler never ran:\n{text}"
     );
 
-    // Positive check: our renderer draws the reverse-video-highlighted top
-    // match, and "in" should still match at least one of the seeded
-    // history entries.
-    assert!(
-        text.contains("\x1b[7m"),
-        "expected our reverse-video suggestion marker in the output:\n{text}"
-    );
+    // Positive check: our renderer drew a fresh suggestion for the
+    // shortened query "in". Typing never selects anything (only Up/Down
+    // does), so this must NOT be reverse-video highlighted.
     assert!(
         text.contains("init"),
         "expected a suggestion for the shortened query 'in' in the output:\n{text}"
+    );
+    assert!(
+        !text.contains("\x1b[7m"),
+        "typing must never select/highlight a suggestion, only Up/Down does:\n{text}"
     );
 }

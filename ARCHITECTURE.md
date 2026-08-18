@@ -35,6 +35,24 @@ that merely contain it, most-recent-first within each group. Not fuzzy —
 PSReadline itself only does prefix/subsequence, for the same reason a
 mid-string match outranking an obvious prefix reads as wrong.
 
+## Selecting a suggestion
+
+Nothing is selected while you type — the block shows matches unhighlighted.
+Down/Up select (first match / last match respectively, from "nothing"), and
+— like bash's own history browsing — fill READLINE_LINE with the selected
+suggestion's full text as a preview, not just highlight it. Enter is never
+rebound (see below), so it needs no special handling here either: it just
+submits whatever's currently in the line, which is already the selection.
+
+Since Down/Up now overwrite READLINE_LINE, matching can no longer read the
+query from READLINE_LINE the way typing does — cycling would end up
+matching against the preview text instead of what you actually typed. A
+separate `_RSREADLINE_QUERY` holds the real typed text; typing updates it,
+cycling reads it. Tab completes the top match same as before, but only when
+nothing is selected — once Up/Down has picked something, Tab is a no-op
+(Enter is how a selection gets confirmed). Regression test:
+`tests/happy_path_selection_and_completion.rs`.
+
 ## Up/Down: rebinding, not reimplementing history
 
 `bind -x` fully replaces a key's action — no "fall through to bash's
@@ -74,6 +92,20 @@ before each handler's very first statement too, before the flag is set; a
 harmless spurious clear, since that handler's own final action always
 redraws correctly right after. Regression test:
 `tests/enter_preexec_clears_stale_suggestions.rs`.
+
+## `read` silently drops empty fields
+
+`__rsreadline_update` parses `render`'s tab-separated
+`selected\tcount\tfill` output with `IFS=$'\t' read -r sel count fill`.
+Once `selected`/`fill` could legitimately be empty (see above), this broke:
+bash's `read` treats IFS whitespace characters (space/tab/newline) as
+collapsible even with a custom IFS, silently dropping empty fields anywhere
+but the last —
+`IFS=$'\t' read -r a b c <<< $'\t3\t'` gives `a=3 b= c=`, not `a= b=3 c=`.
+Every field after the first empty one shifts left, so `count` (used to
+decide the Up/Down rebind) silently went missing. Switched the separator to
+`\x01` (SOH): not whitespace, so `read` splits on it literally, and it can't
+plausibly appear in real command text the way a stray tab or pipe might.
 
 ## Rendering
 

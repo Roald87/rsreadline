@@ -55,14 +55,16 @@ pub fn should_render(rows: u16, min_height: u16) -> bool {
 
 /// Builds the escape sequence that draws a fixed `block_size`-line suggestion
 /// block below the cursor, then restores the cursor to its original position.
-/// Slots beyond `lines.len()` are drawn as cleared blank lines.
-pub fn render_sequence(lines: &[String], selected: usize, block_size: usize) -> String {
+/// Slots beyond `lines.len()` are drawn as cleared blank lines. `selected`
+/// is `None` when nothing is selected (e.g. suggestions just appeared as
+/// you type), in which case no line is highlighted.
+pub fn render_sequence(lines: &[String], selected: Option<usize>, block_size: usize) -> String {
     let mut out = String::from(SAVE_CURSOR);
     for i in 0..block_size {
         out.push_str(CURSOR_DOWN_1);
         out.push_str(CLEAR_LINE);
         if let Some(line) = lines.get(i) {
-            if i == selected {
+            if selected == Some(i) {
                 out.push_str(REVERSE_VIDEO_START);
                 out.push_str(line);
                 out.push_str(REVERSE_VIDEO_END);
@@ -111,7 +113,7 @@ mod tests {
 
     #[test]
     fn render_sequence_saves_and_restores_cursor() {
-        let seq = render_sequence(&[], 0, 5);
+        let seq = render_sequence(&[], None, 5);
         assert!(seq.starts_with(SAVE_CURSOR));
         assert!(seq.ends_with(RESTORE_CURSOR));
     }
@@ -119,7 +121,7 @@ mod tests {
     #[test]
     fn render_sequence_pads_missing_slots_as_blank() {
         let lines = vec!["ls -la".to_string()];
-        let seq = render_sequence(&lines, 0, 3);
+        let seq = render_sequence(&lines, Some(0), 3);
         // one selected line with content, two blank cleared lines
         assert_eq!(seq.matches(CLEAR_LINE).count(), 3);
         assert!(seq.contains(&format!("{REVERSE_VIDEO_START}ls -la{REVERSE_VIDEO_END}")));
@@ -128,9 +130,18 @@ mod tests {
     #[test]
     fn render_sequence_marks_selected_line() {
         let lines = vec!["a".to_string(), "b".to_string()];
-        let seq = render_sequence(&lines, 1, 2);
+        let seq = render_sequence(&lines, Some(1), 2);
         assert!(!seq.contains(&format!("{REVERSE_VIDEO_START}a")));
         assert!(seq.contains(&format!("{REVERSE_VIDEO_START}b{REVERSE_VIDEO_END}")));
+    }
+
+    #[test]
+    fn render_sequence_highlights_nothing_when_unselected() {
+        let lines = vec!["a".to_string(), "b".to_string()];
+        let seq = render_sequence(&lines, None, 2);
+        assert!(!seq.contains(REVERSE_VIDEO_START));
+        assert!(seq.contains('a'));
+        assert!(seq.contains('b'));
     }
 
     #[test]
@@ -162,7 +173,7 @@ mod tests {
     // sequences may use one for vertical movement.
     #[test]
     fn no_sequence_uses_a_bare_linefeed_to_move_down() {
-        assert!(!render_sequence(&["x".to_string()], 0, 3).contains('\n'));
+        assert!(!render_sequence(&["x".to_string()], Some(0), 3).contains('\n'));
         assert!(!clear_sequence(3).contains('\n'));
         assert!(!warning_sequence(&height_warning(15)).contains('\n'));
     }
