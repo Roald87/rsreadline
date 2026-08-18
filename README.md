@@ -54,12 +54,16 @@ ln -sf ../../scripts/pre-commit.sh .git/hooks/pre-commit
 chmod +x .git/hooks/pre-commit
 ```
 
+`cargo test` includes a couple of `tests/*.rs` integration tests that spawn a
+real bash session in a pty and send literal keystrokes — some bash/readline
+behavior only shows up at runtime, not in the generated script's text (see
+ARCHITECTURE.md).
+
 ### Manual verification (not automatable)
 
 Needs a real terminal — type a known history prefix and check suggestions
-appear, cycle Up/Down, Tab-complete, clear the line and confirm Up/Down falls
-back to normal history browsing, submit a command, resize below 15 rows, and
-type `'`, `"`, `\`, `` ` ``, `$` to check they still insert correctly.
+appear, cycle Up/Down, Tab-complete, resize below 15 rows, and type `'`, `"`,
+`\`, `` ` ``, `$` to check they still insert correctly.
 
 ## Known limitations
 

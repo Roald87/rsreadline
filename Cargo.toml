@@ -10,3 +10,6 @@ expect_used = "warn"
 
 [lints.rust]
 unsafe_op_in_unsafe_fn = "warn"
+
+[dev-dependencies]
+nix = { version = "0.31.3", features = ["fs", "process", "term", "ioctl", "poll", "signal"] }
