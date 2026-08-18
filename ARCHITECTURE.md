@@ -139,7 +139,50 @@ text. Escape sequences go to `/dev/tty` directly, not stdout, which carries
 return values back to the bash glue. Below `min_terminal_height`, a
 single warning line replaces the block instead of going silent.
 
-Downward movement uses Cursor Down (`ESC[nB`), not a bare `\n` — a linefeed
-at the bottom margin scrolls the screen, which invalidates
-`SAVE_CURSOR`/`RESTORE_CURSOR`'s saved absolute position (neither tracks
-scroll offset). `ESC[nB` clamps at the bottom row instead of scrolling.
+Downward movement inside the block uses Cursor Down (`ESC[nB`), not a bare
+`\n` — a linefeed at the bottom margin scrolls the screen, which would
+invalidate an absolute saved cursor position (nothing tracks scroll
+offset), while `ESC[nB` clamps at the bottom row instead of scrolling.
+
+That clamp has a cost, though: with the cursor already on the terminal's
+last row, `ESC[nB` can't move down at all, so every line of the block lands
+on that one clamped row and clobbers the line drawn before it — the block
+renders as if it were empty (or, worse, wipes the prompt line's own
+content, immediately papered over by bash's next redisplay). Confirmed by
+actually pinning a real pty session's prompt to its last row, not just
+reasoned about — see below.
+
+The fix (`reserve_rows` / `return_to_start` in `tty.rs`) runs *before* a
+clamped loop: it moves down `block_size` rows using Index (`ESC D`) instead
+of `ESC[nB` — Index scrolls at the bottom margin exactly like a bare `\n`
+would, guaranteeing the room exists — then a relative `ESC[nA` jump back up
+by the same count. Because both the forced scroll (if any) and the
+cursor's own position move together, undoing our own relative movement
+lands back at the exact starting row *and column* regardless of whether a
+scroll happened — unlike `SAVE_CURSOR`/`RESTORE_CURSOR`. Index is used
+rather than a literal `\n` byte for the same reason `ESC[nB` was originally
+chosen over one: a bare `\n` can be silently turned into CR+LF by the
+terminal's `ONLCR` setting, resetting the column; `ESC D` is a distinct
+escape sequence, not the byte `0x0A`, so `ONLCR` never touches it.
+
+That reservation is only safe at *boundary* moments, though — between one
+line-edit session and the next — which is why only `clear_sequence` (called
+from `PROMPT_COMMAND` and the DEBUG-trap preexec) uses it, while
+`render_sequence`/`warning_sequence` (called on every keystroke, from
+`__rsreadline_update`, still mid-edit) go back to plain `SAVE_CURSOR`/
+`RESTORE_CURSOR` and never force a scroll. Confirmed the hard way: an
+earlier version of this fix made `render_sequence` reserve rows too, and
+typing near the bottom row made the prompt line grow stray leading
+whitespace, worse with more keystrokes. Cause: bash's readline keeps its
+*own* internal model of what's already on screen so it can do incremental,
+diff-based redraws — it has no idea our raw writes to `/dev/tty` just
+scrolled the terminal. Restoring the cursor to the exact right spot doesn't
+fix that: the scroll shifts real on-screen content out from under
+readline's stale model without telling it, so its next incremental redraw
+computes against the wrong assumptions. `clear_sequence`'s callers don't
+have this problem — both fire at a point where readline isn't mid-redisplay
+(preexec after `accept-line` has already returned control to bash;
+`PROMPT_COMMAND` before the next `readline()` call even starts), so nothing
+has a stale model for the scroll to invalidate. By the time the user starts
+typing, room has already been reserved by the preceding `clear_sequence`
+call, so `render_sequence`'s clamp is not expected to actually bind.

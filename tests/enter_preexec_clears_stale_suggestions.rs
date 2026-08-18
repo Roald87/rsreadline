@@ -9,8 +9,9 @@
 //! doesn't reach) — it doesn't show up as a literal corrupted substring in
 //! the raw byte stream we capture, since nothing re-transmits the stale
 //! text during the broken window. What we *can* check at the byte level is
-//! ordering: our clear sequence (starting with the cursor-save byte, ESC 7)
-//! must be written before the submitted command's own output, not after.
+//! ordering: our clear sequence (starting with Index, ESC D — see
+//! `reserve_rows` in tty.rs) must be written before the submitted command's
+//! own output, not after.
 
 mod common;
 
@@ -34,7 +35,7 @@ fn preexec_clears_the_block_before_command_output_not_after() {
     let after_enter = session.send_and_drain(b"\n");
     let text = String::from_utf8_lossy(&after_enter);
 
-    let clear_pos = after_enter.windows(2).position(|w| w == b"\x1b7");
+    let clear_pos = after_enter.windows(2).position(|w| w == b"\x1bD");
     let output_pos = text.find("MARKER123");
 
     assert!(
@@ -43,7 +44,7 @@ fn preexec_clears_the_block_before_command_output_not_after() {
     );
     assert!(
         clear_pos.is_some(),
-        "expected our clear sequence (ESC 7) somewhere in the response:\n{text:?}"
+        "expected our clear sequence (ESC D) somewhere in the response:\n{text:?}"
     );
     assert!(
         clear_pos < output_pos,
