@@ -60,6 +60,44 @@ bash's real, native history browsing. This is more correct than a
 file-based re-walk would have been (it uses bash's actual in-memory
 history, including commands not yet flushed to disk).
 
+## Why `bind-tty-special-chars` is off
+
+Backspace not refreshing the suggestion box was reported in live testing:
+line editing worked (bash's own default `backward-delete-char` was clearly
+still running), but our `bind -x '"\C-?": __rsreadline_backspace'` never
+fired.
+
+Diagnosed with a real interactive pty test (Python's `pty` module driving an
+actual bash process with literal DEL bytes, inspecting the raw terminal
+output) rather than guessing: `bind -p | grep -F "\C-?"` showed
+`"\C-?": backward-delete-char` — the default — no matter when or how our
+`bind -x` was issued, including as a standalone command typed directly,
+after a full prompt cycle, immediately before pressing the key. Readline
+was continuously re-binding whatever key `stty erase` currently points to
+(DEL, almost universally) back to its own default, overriding anything else
+bound there. Confirmed by temporarily running `stty erase undef`: our
+binding immediately took hold and worked correctly — then restoring
+`stty erase` back to normal made bash immediately revert to its default
+handler again, proving this is a continuous re-sync, not a one-time
+initialization race.
+
+A fix built on toggling `stty erase` around each command (freeing it during
+typing, restoring it via the `DEBUG`-trap preexec hook right before the
+command runs) was considered and worked, but rejected: `stty erase` is a
+terminal-wide kernel setting, not scoped to bash, and any non-readline
+program (`cat`, a password prompt, `python3`'s plain `input()`) relies on it
+for its own canonical-mode line editing. If the restore step ever failed to
+run, Backspace could break in every program in that terminal, not just this
+tool, until `stty sane`.
+
+The actual fix is much smaller: readline's `bind-tty-special-chars` variable
+is *why* it auto-binds the terminal's special characters (erase, werase,
+etc.) to their readline equivalents in the first place. Turning it off via
+`bind 'set bind-tty-special-chars off'` — one line, first thing in the
+generated script — stops the re-binding entirely. Verified with the same
+pty test: the binding now survives full command cycles, and normal command
+execution (including Ctrl-C) is unaffected.
+
 ## Enter and the `DEBUG`-trap preexec hook
 
 Enter is intentionally never rebound: there's no way to both intercept a key
