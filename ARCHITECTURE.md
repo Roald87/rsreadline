@@ -76,6 +76,17 @@ reports the match count; non-zero → our cycle handler, zero → bash's real
 history browsing. More correct than a file-based re-walk (uses bash's
 actual in-memory history, including unflushed commands).
 
+## `history -a` in `PROMPT_COMMAND`
+
+Suggestions are matched against `history_file` on disk (`history::
+load_entries`), but bash only appends to `HISTFILE` on shell exit by
+default. Without a flush, a command run earlier in the same session
+wouldn't suggest itself when retyped — confirmed with a real pty test, not
+just docs. `__rsreadline_prompt_reset` runs `history -a` first, which
+flushes bash's in-memory history to `HISTFILE` right after each command,
+before the next prompt. Regression test:
+`tests/prompt_reset_flushes_history_to_disk.rs`.
+
 ## `bind-tty-special-chars`
 
 Readline continuously re-binds whatever key `stty erase` points to (DEL,

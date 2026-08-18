@@ -22,7 +22,12 @@ fn selecting_a_suggestion_and_completing_with_tab() {
     let history = "echo alpha\necho beta\necho gamma\n";
     let session = BashSession::spawn(history);
     session.send_and_drain(format!("eval \"$({bin} init bash)\"\n").as_bytes());
-    session.send_and_drain(b"echo hi\n"); // realistic warm-up, not the very first byte
+    // Realistic warm-up, not the very first byte. Deliberately not an
+    // "echo"-prefixed command: `history -a` in __rsreadline_prompt_reset
+    // flushes it to HISTFILE right after it runs, so it would otherwise
+    // become a real (and, being most recent, top-ranked) match for the
+    // "echo" queries below.
+    session.send_and_drain(b"true\n");
 
     // --- Phase 1: typing shows suggestions, nothing selected ---
     let mut typed = Vec::new();

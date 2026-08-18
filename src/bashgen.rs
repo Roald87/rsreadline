@@ -171,6 +171,12 @@ pub fn generate(config: &Config) -> String {
     lines.push(String::new());
 
     lines.push("__rsreadline_prompt_reset() {".to_string());
+    // Suggestions are matched against `history_file` on disk, but bash only
+    // appends to HISTFILE on shell exit — without this, a command just run
+    // this session (e.g. re-typing it right after) wouldn't suggest itself
+    // until the shell exits. `history -a` flushes new lines from bash's
+    // in-memory history to HISTFILE now, before the next prompt/keystroke.
+    lines.push("    history -a".to_string());
     lines.push(
         "    # Safety net: if some prior handler invocation didn't reach its own".to_string(),
     );
