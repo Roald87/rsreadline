@@ -6,7 +6,14 @@ Live, PSReadline-style command suggestions for bash, built against your
 While you type, up to 5 matching history entries show below the prompt.
 Select a suggestion using the arrow keys and press enter to submit.
 
-## Build
+## Install
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Roald87/rsreadline/main/install.sh | bash
+```
+
+Downloads a prebuilt binary to `~/.local/bin/rsreadline` (Linux x86_64 only for
+now). Or build from source:
 
 ```sh
 cargo build --release
@@ -17,8 +24,10 @@ cargo build --release
 Add to `.bashrc`:
 
 ```sh
-eval "$(/path/to/rsreadline init bash)"
+eval "$(rsreadline init bash)"
 ```
+
+(or `/path/to/rsreadline` if it's not on your `PATH`).
 
 Requires a terminal at least 15 lines tall (configurable).
 
