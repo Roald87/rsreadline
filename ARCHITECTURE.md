@@ -53,7 +53,8 @@ it — confirmed with a real pty test, not just docs. The fix,
 `bind 'set bind-tty-special-chars off'`, disables that re-binding entirely.
 (Toggling `stty erase` itself around each command also works, but was
 rejected: it's a terminal-wide setting, and a failed restore could break
-Backspace in *every* program in that terminal, not just here.)
+Backspace in *every* program in that terminal, not just here.) Regression
+test: `tests/backspace_refreshes_suggestions.rs`.
 
 ## Enter and the `DEBUG`-trap preexec hook
 
@@ -71,7 +72,8 @@ body — makes the preexec hook only actually clear when bash is running a
 real command, not our own bookkeeping. One accepted gap: `DEBUG` fires
 before each handler's very first statement too, before the flag is set; a
 harmless spurious clear, since that handler's own final action always
-redraws correctly right after.
+redraws correctly right after. Regression test:
+`tests/enter_preexec_clears_stale_suggestions.rs`.
 
 ## Rendering
 
