@@ -48,9 +48,22 @@ Since Down/Up now overwrite READLINE_LINE, matching can no longer read the
 query from READLINE_LINE the way typing does — cycling would end up
 matching against the preview text instead of what you actually typed. A
 separate `_RSREADLINE_QUERY` holds the real typed text; typing updates it,
-cycling reads it. Tab completes the top match same as before, but only when
-nothing is selected — once Up/Down has picked something, Tab is a no-op
-(Enter is how a selection gets confirmed). Regression test:
+cycling reads it.
+
+Tab is bash's own native completion (readline's default `complete`) when
+nothing is selected — not our suggestion box; this tool doesn't touch Tab
+at all in that state, same as before this feature ever existed. Once Up/Down
+has selected something, Tab becomes a no-op (Enter is how a selection gets
+confirmed instead). That's the same "can't chain to the default action"
+problem as Enter — `bind -x` can't intercept a key and still trigger the
+native readline function — so Tab uses the same dynamic-rebind trick as
+Up/Down: `__rsreadline_update` points `\C-i` at native `complete` when
+`_RSREADLINE_SEL` is empty, or at our `__rsreadline_tab_noop` otherwise. The
+no-op still calls `__rsreadline_update stay` (a `next_selected` direction
+that keeps the current selection exactly as-is) rather than truly doing
+nothing at the byte level — needed to repaint over the DEBUG-trap preexec
+hook's harmless spurious clear (see below), which would otherwise make the
+block visibly vanish until the next real keystroke. Regression test:
 `tests/happy_path_selection_and_completion.rs`.
 
 ## Up/Down: rebinding, not reimplementing history

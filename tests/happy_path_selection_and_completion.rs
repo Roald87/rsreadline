@@ -4,9 +4,10 @@
 //! - Down selects the first suggestion, filling the line with its full
 //!   text; the selected suggestion — not the typed prefix — is what
 //!   actually gets submitted on Enter.
-//! - Tab completes to the top match when nothing is selected ("gi<tab>" ->
-//!   the top "gi*" match, same as before this feature).
-//! - Tab is a no-op once something is selected via Up/Down.
+//! - Tab is bash's own native completion when nothing is selected (not our
+//!   suggestion box) — this tool doesn't touch Tab at all in that state.
+//! - Tab is a no-op once something is selected via Up/Down (Enter is how a
+//!   selection gets confirmed instead).
 //!
 //! Drives a real bash session in a pty (see tests/common) since none of
 //! this is observable from generated-script text alone.
@@ -58,19 +59,28 @@ fn selecting_a_suggestion_and_completing_with_tab() {
         "expected the selected command's real output ('gamma') after Enter:\n{text}"
     );
 
-    // --- Phase 4: fresh prompt, Tab with nothing selected completes to the top match ---
+    // --- Phase 4: fresh prompt, Tab with nothing selected is bash's own
+    // native completion, not us. Native completion's exact effect on
+    // "echo" is filesystem/environment-dependent, so rather than asserting
+    // a specific outcome, assert our tool never got involved at all: native
+    // `complete` runs entirely inside readline, not as a shell command, so
+    // it never triggers our DEBUG-trap preexec hook — no rsreadline escape
+    // sequences should appear at all, and critically the line must NOT
+    // become our top suggestion ("echo gamma"), which is what the old,
+    // incorrect behavior would have produced.
     for byte in b"echo" {
         session.send_and_drain(&[*byte]);
     }
     let after_tab = session.send_and_drain(b"\t");
     let text = String::from_utf8_lossy(&after_tab);
     assert!(
-        text.ends_with("echo gamma"),
-        "expected Tab to complete to the top match with nothing selected:\n{text}"
+        !text.contains("\x1b7"),
+        "native completion shouldn't trigger any of our rendering at all:\n{text}"
     );
     assert!(
-        !text.contains("\x1b[7m"),
-        "Tab-completing shouldn't leave anything selected/highlighted:\n{text}"
+        !text.ends_with("echo gamma"),
+        "Tab must not fill in our top suggestion when nothing is selected \
+         (that's native bash completion's job now, not ours):\n{text}"
     );
 
     session.send_and_drain(b"\x03"); // abandon the line, fresh prompt
@@ -82,18 +92,21 @@ fn selecting_a_suggestion_and_completing_with_tab() {
     session.send_and_drain(b"\x1b[B"); // select "echo gamma"
     let after_tab2 = session.send_and_drain(b"\t");
     let text2 = String::from_utf8_lossy(&after_tab2);
-    // Exactly one SAVE_CURSOR (\x1b7) is expected: the harmless spurious
-    // preexec clear that fires before __rsreadline_tab's very first
-    // statement, before _RSREADLINE_BUSY is set (see ARCHITECTURE.md). A
-    // second one would mean a real __rsreadline_update call happened —
-    // i.e. Tab did NOT actually no-op, even if the visible text looks
-    // unchanged (e.g. it silently reset the selection).
-    let clears = text2.matches("\x1b7").count();
-    assert_eq!(
-        clears, 1,
-        "expected exactly one (harmless, spurious) clear, got {clears} — \
-         Tab must not trigger a real re-render once something is selected:\n{text2}"
+    // __rsreadline_tab_noop calls __rsreadline_update "stay", which redraws
+    // the exact same selection rather than actually changing anything — so
+    // the highlighted suggestion must still be there, and the line must be
+    // unchanged, even though a real render did happen (see ARCHITECTURE.md
+    // for why "stay" redraws instead of truly doing nothing at the byte
+    // level).
+    assert!(
+        text2.contains("\x1b[7mecho gamma\x1b[0m"),
+        "expected 'echo gamma' to remain selected/highlighted after a no-op Tab:\n{text2}"
     );
+    assert!(
+        text2.ends_with("echo gamma"),
+        "expected the line to remain unchanged by the no-op Tab:\n{text2}"
+    );
+
     // The line must still be the selection, unaffected by the no-op Tab.
     let after_enter2 = session.send_and_drain(b"\n");
     let text = String::from_utf8_lossy(&after_enter2);

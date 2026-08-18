@@ -23,13 +23,9 @@ fn main() -> ExitCode {
             );
             ExitCode::SUCCESS
         }
-        ["complete", line, point, selected] => {
-            print!("{}", cmd_complete(&Config::load(), line, point, selected));
-            ExitCode::SUCCESS
-        }
         _ => {
             eprintln!(
-                "usage: rsreadline <init bash | render <line> <point> <selected> <direction> | complete <line> <point> <selected>>"
+                "usage: rsreadline <init bash | render <line> <point> <selected> <direction>>"
             );
             ExitCode::FAILURE
         }
@@ -70,20 +66,6 @@ fn cmd_render(config: &Config, line: &str, point: &str, selected: &str, directio
     format!("{sel_field}\x01{}\x01{fill}", matches.len())
 }
 
-/// Returns the top match's full text for the bash glue to assign to
-/// READLINE_LINE — but only when nothing is currently selected (Tab is a
-/// no-op once Up/Down has selected something, since Enter is how a
-/// selection gets confirmed instead).
-fn cmd_complete(config: &Config, line: &str, point: &str, selected: &str) -> String {
-    if parse_selected(selected).is_some() {
-        return String::new();
-    }
-    let query = line_prefix(line, parse_usize(point));
-    let entries = history::load_entries(&config.history_file);
-    let matches = matcher::suggest(&entries, query, config.max_suggestions);
-    matches.into_iter().next().unwrap_or_default()
-}
-
 fn draw(config: &Config, matches: &[String], selected: Option<usize>) {
     let Some((rows, _cols)) = tty::terminal_size() else {
         return;
@@ -119,12 +101,18 @@ fn line_prefix(line: &str, point: usize) -> &str {
     }
 }
 
-/// Advances the selection by `direction` ("up"/"down") within `[0, count)`,
-/// wrapping at the ends. Typing (any other direction, e.g. "none") always
-/// clears the selection — suggestions appear unselected as you type; only
-/// Up/Down picks one. Down from "nothing selected" lands on the first
-/// match, Up on the last, mirroring how each direction naturally continues
-/// from an unselected state.
+/// Advances the selection by `direction` within `[0, count)`, wrapping at
+/// the ends:
+/// - "up"/"down": cycle; from "nothing selected" they land on the last/
+///   first match respectively.
+/// - "stay": keep the current selection exactly as-is. Used to redraw the
+///   block without changing anything — e.g. Tab is a no-op once something
+///   is selected (Enter is how a selection gets confirmed instead), but
+///   still needs to repaint over the DEBUG-trap preexec hook's harmless
+///   spurious clear (see ARCHITECTURE.md) rather than leaving the block
+///   blank until the next real keystroke.
+/// - anything else (typing, e.g. "none"): clears the selection — suggestions
+///   appear unselected as you type; only Up/Down picks one.
 fn next_selected(current: Option<usize>, count: usize, direction: &str) -> Option<usize> {
     if count == 0 {
         return None;
@@ -138,6 +126,7 @@ fn next_selected(current: Option<usize>, count: usize, direction: &str) -> Optio
             None => count - 1,
             Some(i) => (i + count - 1) % count,
         }),
+        "stay" => current,
         _ => None,
     }
 }
@@ -175,6 +164,12 @@ mod tests {
     fn typing_always_clears_the_selection() {
         assert_eq!(next_selected(Some(2), 5, "none"), None);
         assert_eq!(next_selected(None, 5, "none"), None);
+    }
+
+    #[test]
+    fn stay_keeps_the_current_selection_unchanged() {
+        assert_eq!(next_selected(Some(1), 3, "stay"), Some(1));
+        assert_eq!(next_selected(None, 3, "stay"), None);
     }
 
     #[test]

@@ -4,11 +4,12 @@ Live, PSReadline-style command suggestions for bash, built against your
 `.bash_history`. Zero-dependency Rust binary, wired into bash via `bind -x`.
 
 While you type, up to 5 matching history entries show below the prompt,
-none selected. Tab completes the top match. Up/Down select a suggestion
-(shown in reverse video, and filled into the line as a preview) and cycle
-through the rest; Enter submits whatever's currently in the line, so it
-confirms the selection. With nothing selected, Up/Down fall back to bash's
-normal history browsing; Tab is a no-op once something is selected.
+none selected — Tab is untouched, still bash's own normal completion.
+Up/Down select a suggestion (shown in reverse video, and filled into the
+line as a preview) and cycle through the rest; Enter submits whatever's
+currently in the line, so it confirms the selection. With nothing selected,
+Up/Down fall back to bash's normal history browsing; Tab becomes a no-op
+once something is selected (Enter is how you confirm it instead).
 
 ## Build
 
@@ -64,8 +65,9 @@ ARCHITECTURE.md).
 ### Manual verification (not automatable)
 
 Needs a real terminal — type a known history prefix and check suggestions
-appear, cycle Up/Down, Tab-complete, resize below 15 rows, and type `'`, `"`,
-`\`, `` ` ``, `$` to check they still insert correctly.
+appear, cycle Up/Down and confirm a selection with Enter, check Tab still
+does normal bash completion, resize below 15 rows, and type `'`, `"`, `\`,
+`` ` ``, `$` to check they still insert correctly.
 
 ## Known limitations
 

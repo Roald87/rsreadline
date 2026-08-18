@@ -2,10 +2,12 @@ use crate::config::Config;
 use crate::tty;
 
 /// Builds the full `eval "$(rsreadline init bash)"` output: per-character
-/// `bind -x` bindings that keep suggestions live as-you-type, Tab/Backspace
-/// bindings, dynamic Up/Down rebinding between our suggestion-cycle handler
-/// and bash's native history browsing, and a `PROMPT_COMMAND` hook that
-/// clears the suggestion block before each new prompt.
+/// `bind -x` bindings that keep suggestions live as-you-type, a Backspace
+/// binding, dynamic Up/Down rebinding between our suggestion-cycle handler
+/// and bash's native history browsing, dynamic Tab rebinding between bash's
+/// native completion and our no-op (once a suggestion is selected, Enter is
+/// how it gets confirmed, not Tab), and a `PROMPT_COMMAND` hook that clears
+/// the suggestion block before each new prompt.
 pub fn generate(config: &Config) -> String {
     let exe_q = shell_single_quote(&current_exe_string());
     let clear_seq = dollar_quote(&tty::clear_sequence(config.max_suggestions));
@@ -29,6 +31,11 @@ pub fn generate(config: &Config) -> String {
     lines.push("_RSREADLINE_BUSY=0".to_string());
     lines.push(r#"bind '"\e[A": previous-history'"#.to_string());
     lines.push(r#"bind '"\e[B": next-history'"#.to_string());
+    // Nothing is selected at a fresh prompt, so Tab starts as bash's own
+    // native completion (readline's default binding for it) — not our
+    // suggestion box. __rsreadline_update below switches it to our no-op
+    // once something gets selected, and back once the selection clears.
+    lines.push(r#"bind '"\C-i": complete'"#.to_string());
     lines.push(String::new());
 
     // Enter is never rebound (bind -x can't intercept it and still trigger
@@ -83,6 +90,14 @@ pub fn generate(config: &Config) -> String {
     lines.push(r#"        bind '"\e[A": previous-history'"#.to_string());
     lines.push(r#"        bind '"\e[B": next-history'"#.to_string());
     lines.push("    fi".to_string());
+    // Same dynamic-rebind trick, keyed on selection rather than match
+    // count: nothing selected -> Tab stays bash's native completion;
+    // something selected -> Tab is a no-op (Enter confirms instead).
+    lines.push("    if [[ -n \"$_RSREADLINE_SEL\" ]]; then".to_string());
+    lines.push(r#"        bind -x '"\C-i": __rsreadline_tab_noop'"#.to_string());
+    lines.push("    else".to_string());
+    lines.push(r#"        bind '"\C-i": complete'"#.to_string());
+    lines.push("    fi".to_string());
     lines.push("}".to_string());
     lines.push(String::new());
 
@@ -131,27 +146,21 @@ pub fn generate(config: &Config) -> String {
     lines.push("}".to_string());
     lines.push(String::new());
 
-    lines.push("__rsreadline_tab() {".to_string());
+    // Only reachable while something is selected (see the dynamic rebind in
+    // __rsreadline_update) — Tab is meant to do nothing in that state. But
+    // "do nothing" still needs a redraw ("stay": keep the selection exactly
+    // as it is) to repaint over the DEBUG-trap preexec hook's harmless
+    // spurious clear, which fires before this function's very first
+    // statement, before _RSREADLINE_BUSY is set — otherwise the block would
+    // visibly vanish until the next real keystroke instead of just staying
+    // put. See ARCHITECTURE.md.
+    lines.push("__rsreadline_tab_noop() {".to_string());
     lines.push("    _RSREADLINE_BUSY=1".to_string());
-    lines.push(format!(
-        "    local result=$({exe_q} complete \"$READLINE_LINE\" \"$READLINE_POINT\" \"$_RSREADLINE_SEL\")"
-    ));
-    // Only redraw when a completion actually happened. If nothing did —
-    // either no match, or (per cmd_complete) a suggestion was already
-    // selected — leave the block exactly as it was; Tab is a no-op once
-    // something is selected, and calling __rsreadline_update none here
-    // unconditionally would still clear that selection as a side effect
-    // even though the line itself didn't change.
-    lines.push("    if [[ -n \"$result\" ]]; then".to_string());
-    lines.push("        READLINE_LINE=\"$result\"".to_string());
-    lines.push("        READLINE_POINT=${#READLINE_LINE}".to_string());
-    lines.push("        __rsreadline_update none".to_string());
-    lines.push("    fi".to_string());
+    lines.push("    __rsreadline_update stay".to_string());
     lines.push("    _RSREADLINE_BUSY=0".to_string());
     lines.push("}".to_string());
     lines.push(String::new());
 
-    lines.push(r#"bind -x '"\t": __rsreadline_tab'"#.to_string());
     lines.push(r#"bind -x '"\C-?": __rsreadline_backspace'"#.to_string());
     lines.push(r#"bind -x '"\C-h": __rsreadline_backspace'"#.to_string());
     lines.push(String::new());
@@ -173,6 +182,7 @@ pub fn generate(config: &Config) -> String {
     lines.push("    _RSREADLINE_QUERY=\"\"".to_string());
     lines.push(r#"    bind '"\e[A": previous-history'"#.to_string());
     lines.push(r#"    bind '"\e[B": next-history'"#.to_string());
+    lines.push(r#"    bind '"\C-i": complete'"#.to_string());
     lines.push("}".to_string());
     lines.push(
         "PROMPT_COMMAND=\"__rsreadline_prompt_reset${PROMPT_COMMAND:+; }$PROMPT_COMMAND\""
@@ -262,9 +272,11 @@ mod tests {
             .count();
         assert_eq!(char_bindings, 95); // 0x20..=0x7e inclusive
 
-        assert!(script.contains(r#"bind -x '"\t": __rsreadline_tab'"#));
         assert!(script.contains(r#"bind -x '"\C-?": __rsreadline_backspace'"#));
         assert!(script.contains(r#"bind -x '"\C-h": __rsreadline_backspace'"#));
+        // Tab starts bound to bash's own native completion, not us — see
+        // tab_starts_and_resets_to_native_completion.
+        assert!(script.contains(r#"bind '"\C-i": complete'"#));
     }
 
     #[test]
@@ -336,6 +348,27 @@ mod tests {
     }
 
     #[test]
+    fn tab_dynamically_rebinds_between_native_completion_and_noop() {
+        let script = generate(&default_config());
+        // Initial state (nothing selected): native completion.
+        assert!(script.contains(r#"bind '"\C-i": complete'"#));
+        // __rsreadline_update flips it based on _RSREADLINE_SEL.
+        assert!(script.contains(r#"bind -x '"\C-i": __rsreadline_tab_noop'"#));
+        assert!(script.contains("if [[ -n \"$_RSREADLINE_SEL\" ]]; then"));
+        // prompt_reset resets it back to native for the next line too.
+        let prompt_reset_start = script
+            .find("__rsreadline_prompt_reset() {")
+            .expect("prompt_reset not found");
+        let body_end = script[prompt_reset_start..]
+            .find("\n}")
+            .expect("prompt_reset has no closing brace");
+        assert!(
+            script[prompt_reset_start..prompt_reset_start + body_end]
+                .contains(r#"bind '"\C-i": complete'"#)
+        );
+    }
+
+    #[test]
     fn debug_trap_and_preexec_guard_are_wired_up() {
         let script = generate(&default_config());
         assert!(script.contains("_RSREADLINE_BUSY=0"), "initial declaration");
@@ -358,7 +391,7 @@ mod tests {
             "__rsreadline_down",
             "__rsreadline_insert",
             "__rsreadline_backspace",
-            "__rsreadline_tab",
+            "__rsreadline_tab_noop",
         ] {
             let start = script
                 .find(&format!("{func}() {{"))
