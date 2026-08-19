@@ -73,3 +73,13 @@ chmod +x .git/hooks/pre-commit
 real bash session in a pty and send literal keystrokes — some bash/readline
 behavior only shows up at runtime, not in the generated script's text (see
 ARCHITECTURE.md).
+
+## Release
+
+```sh
+scripts/release.sh 0.2.0
+```
+
+Bumps the version in `Cargo.toml`/`Cargo.lock`, commits, tags, and pushes —
+pushing the tag triggers the release workflow that builds and publishes the
+binary.
