@@ -1,7 +1,8 @@
 # rsreadline
 
-Live, PSReadline-style command suggestions for bash, built against your
-`.bash_history`. Zero-dependency Rust binary, wired into bash via `bind -x`.
+Live, [PSReadline](https://github.com/PowerShell/PSReadLine)-style command suggestions
+for bash, built against your `.bash_history`. Zero-dependency Rust binary, wired into
+bash via `bind -x`.
 
 While you type, up to 5 matching history entries show below the prompt.
 Select a suggestion using the arrow keys and press enter to submit.
