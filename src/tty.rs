@@ -8,29 +8,23 @@ use std::os::fd::AsRawFd;
 const SAVE_CURSOR: &str = "\x1b7";
 const RESTORE_CURSOR: &str = "\x1b8";
 // Cursor Down (CUD), not a bare "\n": CUD clamps at the bottom row instead
-// of scrolling the screen, so it can't invalidate an absolute saved cursor
-// position the way a scrolling linefeed would. Used by render_sequence/
-// warning_sequence, which run on every keystroke while bash's readline is
-// live-editing the current line — readline keeps its own model of what's
-// already on screen for incremental (diff-based) redraws, and has no idea
-// about any raw escape sequences we write behind its back. Restoring the
-// cursor to the exact right spot isn't enough if a *scroll* happened along
-// the way: the scroll shifts real on-screen content out from under
-// readline's stale model without it knowing, so its next incremental
-// redraw computes against the wrong assumptions (observed as the prompt
-// line growing stray leading padding, worse the more scroll had occurred).
-// So this path must never scroll — see `reserve_rows` for the one place
-// that's safe to.
+// of scrolling, so it can't invalidate an absolute saved cursor position
+// the way a scrolling linefeed would. Used by render_sequence/
+// warning_sequence, which run mid-keystroke while bash's readline is doing
+// its own incremental, diff-based redraws from a screen model that knows
+// nothing about our writes — an actual scroll would shift real content out
+// from under that model, corrupting the next redraw (observed as the
+// prompt line growing stray padding). So this path must never scroll — see
+// `reserve_rows` for the one place that's safe to.
 const CURSOR_DOWN_1: &str = "\x1b[1B";
 const CLEAR_LINE: &str = "\x1b[2K\r";
-// Index (IND): moves down one row, scrolling the screen if the cursor is
-// already on the bottom row — like a bare "\n" would, but as a raw escape
-// sequence rather than the byte 0x0A, so the terminal's ONLCR setting can't
-// turn it into CR+LF and reset the column (see `reserve_rows`). Only used
-// by `clear_sequence`, called from PROMPT_COMMAND and the DEBUG-trap
-// preexec — both boundary moments between one line-edit session and the
-// next, where readline isn't mid-redisplay and so has no stale on-screen
-// model for a scroll to invalidate.
+// Index (IND): moves down one row, scrolling if the cursor is on the
+// bottom row — like a bare "\n", but as an escape sequence rather than
+// byte 0x0A, so the terminal's ONLCR setting can't turn it into CR+LF and
+// reset the column. Only used by `clear_sequence`, called at prompt
+// boundaries (PROMPT_COMMAND, DEBUG-trap preexec) where readline isn't
+// mid-redisplay, so there's no stale on-screen model for a scroll to
+// invalidate.
 const INDEX_DOWN_1: &str = "\x1bD";
 // Reverse video rather than a fixed color: it inverts whatever foreground/
 // background the user's own terminal theme already has, so it can't clash.
@@ -75,14 +69,11 @@ pub fn should_render(rows: u16, min_height: u16) -> bool {
     rows >= min_height
 }
 
-/// Guarantees `rows` blank terminal rows exist directly below the cursor's
-/// *current* row — forcing a scroll if the cursor started near the bottom
-/// margin — then returns to that same row and column. Pairs with
-/// `return_to_start`, called after drawing into those rows, instead of
-/// `SAVE_CURSOR`/`RESTORE_CURSOR`: an absolute saved position can't survive
-/// a scroll it didn't know about, but a scroll carries the cursor along
-/// with the content, so undoing our own relative movement lands back in the
-/// right place either way — whether or not a scroll actually happened.
+/// Guarantees `rows` blank rows exist below the cursor's current row
+/// (forcing a scroll if near the bottom margin), then returns to that row
+/// and column. Uses relative movement rather than `SAVE_CURSOR`/
+/// `RESTORE_CURSOR`: a scroll carries the cursor along with the content, so
+/// undoing our own movement lands back correctly either way.
 fn reserve_rows(rows: usize) -> String {
     let mut out = String::new();
     for _ in 0..rows {
@@ -101,18 +92,14 @@ fn return_to_start(rows: usize) -> String {
     }
 }
 
-/// Builds the escape sequence that draws a fixed `block_size`-line suggestion
-/// block below the cursor, then restores the cursor to its original position.
-/// Slots beyond `lines.len()` are drawn as cleared blank lines. `selected`
-/// is `None` when nothing is selected (e.g. suggestions just appeared as
-/// you type), in which case no line is highlighted.
+/// Draws a fixed `block_size`-line suggestion block below the cursor, then
+/// restores the cursor. Slots beyond `lines.len()` are blank. `selected ==
+/// None` highlights nothing.
 ///
-/// Deliberately does NOT reserve rows the way `clear_sequence` does — this
-/// runs on every keystroke, mid-line-edit, where a forced scroll would
-/// corrupt bash's own redisplay bookkeeping (see `CURSOR_DOWN_1`'s doc
-/// comment). By the time typing starts, `clear_sequence` has already
-/// reserved room ahead of the prompt, so `CURSOR_DOWN_1`'s clamp is not
-/// expected to actually bind here.
+/// Never reserves rows like `clear_sequence` does — runs mid-keystroke,
+/// where a forced scroll would corrupt bash's redisplay (see
+/// `CURSOR_DOWN_1`). By the time typing starts, `clear_sequence` has
+/// already reserved room, so the clamp shouldn't actually bind here.
 pub fn render_sequence(lines: &[String], selected: Option<usize>, block_size: usize) -> String {
     let mut out = String::from(SAVE_CURSOR);
     for i in 0..block_size {
@@ -144,9 +131,9 @@ pub fn clear_sequence(block_size: usize) -> String {
     out
 }
 
-/// Builds the single-line escape sequence shown in place of the block when
-/// the terminal is too short for `min_terminal_height`. Mid-edit like
-/// `render_sequence` (see its doc comment) — no row reservation here either.
+/// Shown in place of the block when the terminal is shorter than
+/// `min_terminal_height`. Mid-edit like `render_sequence` — no row
+/// reservation here either.
 pub fn warning_sequence(message: &str) -> String {
     format!("{SAVE_CURSOR}{CURSOR_DOWN_1}{CLEAR_LINE}{message}{RESTORE_CURSOR}")
 }

@@ -9,9 +9,8 @@ use std::collections::HashSet;
 /// Entries are deduped, keeping each string's most recent occurrence.
 ///
 /// Substring, not fuzzy: PSReadline (the tool this suggestion style is
-/// modeled on) only does prefix/subsequence matching too, for the same
-/// reason a mid-string match outranking an obvious prefix would read as
-/// wrong here.
+/// modeled on) does the same, since a mid-string match outranking an
+/// obvious prefix would read as wrong.
 pub fn suggest(entries: &[String], query: &str, max: usize) -> Vec<String> {
     if query.is_empty() {
         return Vec::new();

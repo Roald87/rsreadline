@@ -36,29 +36,22 @@ fn main() -> ExitCode {
 }
 
 /// Recomputes matches, advances the selection by `direction`, draws the
-/// suggestion block (or the height warning) to /dev/tty, and returns
-/// "selected_index\x01match_count\x01fill_text" for the bash glue —
-/// `selected` is empty when nothing is selected, and `fill_text` (the newly
-/// selected suggestion's full text, for the glue to load into
-/// READLINE_LINE) is likewise empty unless a real selection was just made.
-/// The separator is `bashgen::FIELD_SEP` (SOH, not a tab) — see its doc
-/// comment for why plain IFS whitespace doesn't work here.
+/// suggestion block (or height warning) to /dev/tty, and returns
+/// "selected_index<SEP>match_count<SEP>fill_text" (`bashgen::FIELD_SEP`)
+/// for the bash glue. `selected`/`fill_text` are empty unless something is
+/// actually selected.
 ///
-/// The bash glue decides *what* `line`/`point` mean here: for a typing
-/// event (`direction == "none"`) it passes the current READLINE_LINE, which
-/// also becomes the new stored query; for an up/down cycle it passes the
-/// stored query back unchanged, so cycling keeps matching against what was
-/// actually typed rather than whatever the last selection preview left in
-/// READLINE_LINE (see `_RSREADLINE_QUERY` in bashgen.rs).
+/// The bash glue decides what `line`/`point` mean: typing (`direction ==
+/// "none"`) passes the current READLINE_LINE, which also becomes the
+/// stored query; cycling passes the stored query back unchanged, so it
+/// matches what was typed, not the last selection preview
+/// (`_RSREADLINE_QUERY` in bashgen.rs).
 ///
-/// `direction == "delete"` is the one case with a disk side effect: if a
-/// suggestion is currently selected, its underlying history entry is
-/// removed from `history_file` (all occurrences) before matches are
-/// recomputed, so the response already reflects the post-delete state in
-/// this single round trip. Reuses this same function rather than a separate
-/// subcommand: a delete is just "current state + a direction -> new state"
-/// like every other direction, and a dedicated subcommand would still need
-/// a second `render` call right after it for the redraw anyway.
+/// `direction == "delete"` also removes the selected entry from
+/// `history_file` (all occurrences) before recomputing matches, reusing
+/// this function rather than a separate subcommand — a delete is just
+/// another direction, and a dedicated subcommand would still need a second
+/// `render` call for the redraw.
 fn cmd_render(config: &Config, line: &str, point: &str, selected: &str, direction: &str) -> String {
     let query = line_prefix(line, parse_usize(point));
     let mut entries = history::load_entries(&config.history_file);
@@ -123,21 +116,14 @@ fn line_prefix(line: &str, point: usize) -> &str {
 
 /// Advances the selection by `direction` within `[0, count)`, wrapping at
 /// the ends:
-/// - "up"/"down": cycle; from "nothing selected" they land on the last/
-///   first match respectively.
-/// - "stay": keep the current selection exactly as-is. Used to redraw the
-///   block without changing anything — e.g. Tab is a no-op once something
-///   is selected (Enter is how a selection gets confirmed instead), but
-///   still needs to repaint over the DEBUG-trap preexec hook's harmless
-///   spurious clear (see bashgen.rs's `tab_noop_handler`) rather than leaving the block
-///   blank until the next real keystroke.
-/// - "delete": like "stay", but clamped into the (possibly shrunk) new
-///   `count` — the one direction where the match list can legitimately be
-///   a different length than when `current` was chosen, since the caller
-///   just removed the selected entry from history. Deliberately distinct
-///   from "stay", which existing callers rely on as an exact no-op.
-/// - anything else (typing, e.g. "none"): clears the selection — suggestions
-///   appear unselected as you type; only Up/Down picks one.
+/// - "up"/"down": cycle; from "nothing selected" land on the last/first
+///   match.
+/// - "stay": exact no-op, used to redraw (e.g. Tab's no-op still needs to
+///   repaint over the DEBUG-trap's spurious clear — see bashgen.rs's
+///   `tab_noop_handler`).
+/// - "delete": like "stay" but clamped to the new (possibly shrunk)
+///   `count`, since deleting the selected entry can change the match count.
+/// - anything else ("none", typing): clears the selection.
 fn next_selected(current: Option<usize>, count: usize, direction: &str) -> Option<usize> {
     if count == 0 {
         return None;

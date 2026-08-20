@@ -13,23 +13,20 @@ pub fn load_entries(path: &Path) -> Vec<String> {
 }
 
 /// Removes every occurrence of `target` from the history file at `path`
-/// (so a polluting entry stops being suggested for good, not just once),
-/// along with each occurrence's paired `HISTTIMEFORMAT` timestamp-comment
-/// line, if it has one. No-ops (successfully) if the file doesn't exist or
-/// `target` doesn't appear in it.
+/// (all occurrences, not just the most recent), along with each
+/// occurrence's paired `HISTTIMEFORMAT` timestamp line, if any. No-ops if
+/// the file doesn't exist or `target` isn't in it.
 ///
-/// Writes atomically (temp file + rename) rather than truncate-in-place:
-/// this is the one place rsreadline mutates the user's live shell history
-/// rather than just reading it, and a write that's interrupted partway
-/// through would otherwise risk turning "delete one line" into "wipe the
-/// whole file". The original file's permission bits are preserved on the
-/// temp file before the rename, since `.bash_history` can hold secrets
-/// typed into commands and a `chmod 600` shouldn't get silently loosened
-/// to umask-default permissions.
+/// Writes atomically (temp file + rename): this is the one place
+/// rsreadline mutates the user's live history, and an interrupted
+/// truncate-in-place write could turn "delete one line" into "wipe the
+/// whole file". Permission bits are copied onto the temp file first, since
+/// `.bash_history` can hold secrets and a `chmod 600` shouldn't get
+/// silently loosened.
 ///
-/// Note: rejoining with `\n` after `str::lines()` normalizes any CRLF line
-/// endings in the file to LF, even on untouched lines — accepted since
-/// this is a Linux-only tool and `.bash_history` is effectively always LF.
+/// Rejoining with `\n` after `str::lines()` normalizes CRLF to LF on every
+/// line — accepted, since this is Linux-only and `.bash_history` is
+/// effectively always LF.
 pub fn remove_entry(path: &Path, target: &str) -> io::Result<()> {
     let Ok(text) = fs::read_to_string(path) else {
         return Ok(());
