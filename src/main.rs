@@ -1,3 +1,6 @@
+//! Subcommand dispatch for the `rsreadline` binary: `init bash` (see
+//! `bashgen`) and `render` (see `cmd_render`).
+
 mod bashgen;
 mod config;
 mod history;
@@ -38,24 +41,24 @@ fn main() -> ExitCode {
 /// `selected` is empty when nothing is selected, and `fill_text` (the newly
 /// selected suggestion's full text, for the glue to load into
 /// READLINE_LINE) is likewise empty unless a real selection was just made.
-/// The separator is \x01 (SOH), not a tab: bash's `read` silently drops
-/// empty fields anywhere but the last when splitting on IFS whitespace
-/// (space/tab/newline) even with a custom IFS, which corrupts `selected`/
-/// `fill_text` whenever they're legitimately empty — see the matching
-/// comment in bashgen.rs's `__rsreadline_update` for the verified example.
+/// The separator is \x01 (SOH), not a tab — see `bashgen::READ_RESULT_LINE`
+/// for why plain IFS whitespace doesn't work here.
 ///
 /// The bash glue decides *what* `line`/`point` mean here: for a typing
 /// event (`direction == "none"`) it passes the current READLINE_LINE, which
 /// also becomes the new stored query; for an up/down cycle it passes the
 /// stored query back unchanged, so cycling keeps matching against what was
 /// actually typed rather than whatever the last selection preview left in
-/// READLINE_LINE. See ARCHITECTURE.md ("Selecting a suggestion").
+/// READLINE_LINE (see `_RSREADLINE_QUERY` in bashgen.rs).
 ///
 /// `direction == "delete"` is the one case with a disk side effect: if a
 /// suggestion is currently selected, its underlying history entry is
 /// removed from `history_file` (all occurrences) before matches are
 /// recomputed, so the response already reflects the post-delete state in
-/// this single round trip. See ARCHITECTURE.md.
+/// this single round trip. Reuses this same function rather than a separate
+/// subcommand: a delete is just "current state + a direction -> new state"
+/// like every other direction, and a dedicated subcommand would still need
+/// a second `render` call right after it for the redraw anyway.
 fn cmd_render(config: &Config, line: &str, point: &str, selected: &str, direction: &str) -> String {
     let query = line_prefix(line, parse_usize(point));
     let mut entries = history::load_entries(&config.history_file);
@@ -125,7 +128,7 @@ fn line_prefix(line: &str, point: usize) -> &str {
 ///   block without changing anything — e.g. Tab is a no-op once something
 ///   is selected (Enter is how a selection gets confirmed instead), but
 ///   still needs to repaint over the DEBUG-trap preexec hook's harmless
-///   spurious clear (see ARCHITECTURE.md) rather than leaving the block
+///   spurious clear (see bashgen.rs's `tab_noop_handler`) rather than leaving the block
 ///   blank until the next real keystroke.
 /// - "delete": like "stay", but clamped into the (possibly shrunk) new
 ///   `count` — the one direction where the match list can legitimately be

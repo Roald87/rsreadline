@@ -1,3 +1,7 @@
+//! Reads and mutates `.bash_history`: parses entries (skipping
+//! `HISTTIMEFORMAT` timestamp lines) and removes a given entry's
+//! occurrences on disk.
+
 use std::ffi::OsString;
 use std::fs;
 use std::io;

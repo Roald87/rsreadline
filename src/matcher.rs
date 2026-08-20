@@ -1,9 +1,17 @@
+//! Substring matching over history entries: prefix-ranked, deduped,
+//! most-recent-first.
+
 use std::collections::HashSet;
 
 /// Returns up to `max` history entries matching `query`, most-relevant first:
 /// entries that start with `query` come before entries that merely contain
 /// it, and within each group the most recently used entry comes first.
 /// Entries are deduped, keeping each string's most recent occurrence.
+///
+/// Substring, not fuzzy: PSReadline (the tool this suggestion style is
+/// modeled on) only does prefix/subsequence matching too, for the same
+/// reason a mid-string match outranking an obvious prefix would read as
+/// wrong here.
 pub fn suggest(entries: &[String], query: &str, max: usize) -> Vec<String> {
     if query.is_empty() {
         return Vec::new();

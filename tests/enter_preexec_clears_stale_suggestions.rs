@@ -2,7 +2,8 @@
 //! suggestion block sits on screen untouched while a submitted command
 //! runs, so short command output can come out with leftover suggestion
 //! characters glued onto it (e.g. a real error ending in stray "ve --").
-//! See ARCHITECTURE.md ("Enter and the DEBUG-trap preexec hook").
+//! See ARCHITECTURE.md ("The binary ⇄ generated-script contract") and
+//! `bashgen.rs::preexec_and_debug_trap`.
 //!
 //! The corruption itself is a terminal *grid* artifact (stale characters
 //! left in cells an old, wider write touched that a new, shorter write

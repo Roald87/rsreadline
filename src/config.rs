@@ -1,3 +1,6 @@
+//! Hand-rolled `key = value` config parser for
+//! `~/.config/rsreadline/config.toml`.
+
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};

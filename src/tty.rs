@@ -1,3 +1,6 @@
+//! Terminal size (via `ioctl`/`TIOCGWINSZ`) and the raw ANSI escape
+//! sequences used to draw/clear the suggestion block.
+
 use std::fs::OpenOptions;
 use std::io::{self, Write};
 use std::os::fd::AsRawFd;
