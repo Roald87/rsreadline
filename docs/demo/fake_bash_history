@@ -1,0 +1,22 @@
+ls -la
+cat README.md
+cargo build --release
+cargo test
+cargo clippy --all-targets
+npm install
+npm run build
+npm run test
+docker compose down
+docker compose logs -f
+docker compose up -d
+docker ps
+git log --oneline -5
+git diff
+git status
+git branch -a
+git add -A
+git commit -m "wip: suggestion box polish"
+git push origin feature/suggestions
+git status
+git stage
+git stash

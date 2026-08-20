@@ -9,6 +9,8 @@ Select a suggestion using the arrow keys and press enter to submit. Press
 Shift+Delete on a selected suggestion to remove it from your history
 entirely (all occurrences).
 
+![rsreadline demo](docs/demo/rsreadline.gif)
+
 ## Install
 
 ```sh
