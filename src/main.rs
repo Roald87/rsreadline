@@ -41,8 +41,8 @@ fn main() -> ExitCode {
 /// `selected` is empty when nothing is selected, and `fill_text` (the newly
 /// selected suggestion's full text, for the glue to load into
 /// READLINE_LINE) is likewise empty unless a real selection was just made.
-/// The separator is \x01 (SOH), not a tab — see `bashgen::READ_RESULT_LINE`
-/// for why plain IFS whitespace doesn't work here.
+/// The separator is `bashgen::FIELD_SEP` (SOH, not a tab) — see its doc
+/// comment for why plain IFS whitespace doesn't work here.
 ///
 /// The bash glue decides *what* `line`/`point` mean here: for a typing
 /// event (`direction == "none"`) it passes the current READLINE_LINE, which
@@ -82,7 +82,8 @@ fn cmd_render(config: &Config, line: &str, point: &str, selected: &str, directio
         .and_then(|i| matches.get(i))
         .cloned()
         .unwrap_or_default();
-    format!("{sel_field}\x01{}\x01{fill}", matches.len())
+    let sep = bashgen::FIELD_SEP;
+    format!("{sel_field}{sep}{}{sep}{fill}", matches.len())
 }
 
 fn draw(config: &Config, matches: &[String], selected: Option<usize>) {
@@ -283,7 +284,7 @@ mod tests {
     }
 
     fn split_render_result(result: &str) -> (&str, &str, &str) {
-        let mut parts = result.split('\x01');
+        let mut parts = result.split(bashgen::FIELD_SEP);
         let sel = parts.next().unwrap();
         let count = parts.next().unwrap();
         let fill = parts.next().unwrap();

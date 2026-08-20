@@ -3,6 +3,17 @@
 //! function below (`header`, `update_function`, the `bind -x` handlers,
 //! ...) instead of one long list of `lines.push` calls, so the rationale
 //! for a given piece of bash can sit as a doc comment directly above it.
+//!
+//! Key-sequence glossary, for the `bind`/`bind -x` strings below — this is
+//! bash readline's own notation, not ours, and has to appear verbatim in
+//! the generated script regardless of how it's named in this file:
+//! - `\e[A` / `\e[B` — the escape sequences a terminal sends for the
+//!   Up/Down arrow keys.
+//! - `\C-i` — Ctrl-I, i.e. the Tab key.
+//! - `\C-?` / `\C-h` — Ctrl-? (DEL, 0x7f) and Ctrl-H (BS, 0x08), the two
+//!   different bytes a terminal can send for Backspace depending on
+//!   settings; both are bound to the same handler.
+//! - `\e[3;2~` — the sequence for Shift+Delete.
 
 use crate::config::Config;
 use crate::tty;
@@ -99,20 +110,31 @@ __rsreadline_preexec() {
     out
 }
 
-/// `render`'s response is parsed via bash's IFS-splitting `read`, into which
-/// `sel`/`fill` can legitimately arrive empty (nothing selected / no fill).
-/// The separator has to be `\x01` (SOH), not a tab or other whitespace:
-/// bash's `read` treats IFS *whitespace* characters (space/tab/newline) as
-/// collapsible even with a custom IFS, silently dropping empty fields
-/// anywhere but the last — verified directly:
-/// `IFS=$'\t' read -r a b c <<< $'\t3\t'` gives `a=3 b= c=`, not
-/// `a= b=3 c=`. Every field after the first empty one shifts left, so
-/// `count` (which decides the Up/Down rebind just below) would silently go
-/// missing. `\x01` isn't whitespace, so `read` splits on it literally, and
-/// it can't plausibly appear in real command text the way a stray tab or
-/// pipe might. `main.rs::cmd_render` emits this same separator on the
-/// producing side.
-const READ_RESULT_LINE: &str = "    IFS=$'\\x01' read -r sel count fill <<< \"$result\"\n";
+/// The field separator for `render`'s response, shared by both sides of the
+/// call: `main.rs::cmd_render` emits it between `selected`/`match_count`/
+/// `fill_text`, and `read_result_line` below parses it back out via bash's
+/// IFS-splitting `read` — into which `sel`/`fill` can legitimately arrive
+/// empty (nothing selected / no fill).
+///
+/// Has to be `\x01` (SOH), not a tab or other whitespace: bash's `read`
+/// treats IFS *whitespace* characters (space/tab/newline) as collapsible
+/// even with a custom IFS, silently dropping empty fields anywhere but the
+/// last — verified directly: `IFS=$'\t' read -r a b c <<< $'\t3\t'` gives
+/// `a=3 b= c=`, not `a= b=3 c=`. Every field after the first empty one
+/// shifts left, so `count` (which decides the Up/Down rebind just below)
+/// would silently go missing. `\x01` isn't whitespace, so `read` splits on
+/// it literally, and it can't plausibly appear in real command text the way
+/// a stray tab or pipe might.
+pub(crate) const FIELD_SEP: char = '\x01';
+
+/// The `read` line in `update_function` that consumes `FIELD_SEP` — see its
+/// doc comment for why it has to be this exact byte.
+fn read_result_line() -> String {
+    format!(
+        "    IFS={} read -r sel count fill <<< \"$result\"\n",
+        dollar_quote(&FIELD_SEP.to_string())
+    )
+}
 
 /// The handler every key binding below eventually calls. `direction`
 /// decides what `query`/`point` mean: for `none` (typing), the current
@@ -148,7 +170,7 @@ fn update_function(exe_q: &str) -> String {
     );
     out.push_str(exe_q);
     out.push_str(" render \"$query\" \"$point\" \"$_RSREADLINE_SEL\" \"$direction\")\n");
-    out.push_str(READ_RESULT_LINE);
+    out.push_str(&read_result_line());
     out.push_str(
         r#"    _RSREADLINE_SEL="$sel"
     if [[ -n "$fill" ]]; then
