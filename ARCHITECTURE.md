@@ -186,3 +186,78 @@ have this problem — both fire at a point where readline isn't mid-redisplay
 has a stale model for the scroll to invalidate. By the time the user starts
 typing, room has already been reserved by the preceding `clear_sequence`
 call, so `render_sequence`'s clamp is not expected to actually bind.
+
+## Deleting a suggestion (Shift+Delete)
+
+Shift+Delete removes the currently selected suggestion from the history
+file entirely — every occurrence of that exact command text, not just the
+most recent one, so a polluting entry (a typo, a stray `cd`/`ls`, etc.)
+actually stops being suggested for good. `HISTIGNORE` can't do this itself:
+it only governs what bash writes *going forward*, not lines already sitting
+in the file.
+
+This reuses `render` (a `direction == "delete"` value) rather than adding a
+new subcommand: `render` already takes "current state + a direction" and
+returns "new state," and a delete is just that same cycle with a disk
+mutation folded in — mutate, reload, recompute matches, then fall into the
+same select/draw/return tail every other direction uses. A separate
+subcommand would still need a second `render` call right after for the
+redraw, which breaks the "every handler ends in exactly one
+`__rsreadline_update` call" pattern every other `bashgen.rs` handler
+follows.
+
+`next_selected`'s `"delete"` arm clamps rather than reproducing `"stay"`'s
+exact-no-op behavior: `current.map(|i| i.min(count - 1))`. This is the one
+direction where the match list can legitimately have a different length
+than when `current` was chosen — count doesn't necessarily shrink by
+exactly one, since `matcher::suggest` truncates to `max_suggestions`, so
+deleting the selected entry can let a previously truncated match backfill
+the same slot instead. The formula handles both cases: same slot stays
+selected if still in bounds (backfill, or the deleted entry wasn't last),
+clamped to the new last index otherwise.
+
+On-disk removal pairs each matching line with its preceding
+`HISTTIMEFORMAT` timestamp-comment line (if any), checked per-occurrence
+against that occurrence's own immediate predecessor — not "the nearest
+timestamp line anywhere nearby" — so a second occurrence sitting near an
+unrelated timestamp comment doesn't accidentally take it out too. Written
+atomically (temp file + rename): this is the one place rsreadline mutates
+the user's live shell history rather than just reading it, and a plain
+truncate-then-write that's interrupted partway through would turn "delete
+one line" into "wipe the whole file." The original file's permission bits
+are copied onto the temp file before the rename, since `.bash_history` can
+hold secrets typed into commands and a privacy-conscious `chmod 600`
+shouldn't get silently loosened to umask-default permissions. Rejoining
+with `\n` after `str::lines()` normalizes any CRLF line endings to LF, even
+on untouched lines — accepted, since this is a Linux-only tool and
+`.bash_history` is effectively always LF in practice.
+
+In `bashgen.rs`, `__rsreadline_delete_selected` resets `READLINE_LINE` to
+`_RSREADLINE_QUERY` *before* calling `__rsreadline_update delete`:
+`READLINE_LINE` is still holding the about-to-be-deleted entry's preview
+text, and `__rsreadline_update` only overwrites it when the response's
+`fill` comes back non-empty. If the delete leaves nothing selected, `fill`
+is empty, so this reset is what's actually left on the line afterward — if
+something does end up selected post-delete, `fill` is non-empty and
+overwrites it again anyway. The binding is static, not dynamically rebound
+like Up/Down/Tab (bash has no competing native binding for it to restore),
+so the handler is reachable with nothing selected too; that branch still
+calls `__rsreadline_update stay` rather than doing nothing, same as
+`__rsreadline_tab_noop`, to repaint over the DEBUG-trap preexec hook's
+harmless spurious clear.
+
+Two things here are only verified against this repo's own pty test, not
+against reality at large, in the same spirit as the `ESC[nB` clamp bug and
+`bind-tty-special-chars` above:
+- The `\e[3;2~` byte sequence is the standard xterm/most-terminal-emulators
+  CSI code for Shift+Delete, but terminal emulators vary — this is only
+  confirmed against whatever bytes this repo's own pty test sends, not
+  against every real terminal a user might run this in.
+- `history -a` (in `__rsreadline_prompt_reset`) tracks what it's already
+  flushed via bash's own in-memory bookkeeping, not by diffing file
+  content — rewriting `.bash_history` out from under bash mid-session
+  could plausibly confuse a later flush. Tested directly: after a delete,
+  a freshly run command still gets flushed and suggests itself correctly,
+  and the deleted entries don't resurrect.
+
+Regression test: `tests/shift_delete_removes_selected_suggestion.rs`.

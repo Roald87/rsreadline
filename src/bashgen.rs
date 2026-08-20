@@ -161,8 +161,41 @@ pub fn generate(config: &Config) -> String {
     lines.push("}".to_string());
     lines.push(String::new());
 
+    // Unlike the handlers above, this one's binding is static (see the
+    // `bind -x '"\e[3;2~"...'` line), so it's reachable at any time,
+    // including with nothing selected — hence the "else" branch below,
+    // rather than assuming a selection always exists. READLINE_LINE/POINT
+    // are reset to the typed query *before* calling __rsreadline_update:
+    // READLINE_LINE is still holding the about-to-be-deleted entry's
+    // preview text, and __rsreadline_update only overwrites it when the
+    // response's `fill` comes back non-empty (i.e. something is still
+    // selected after the delete) — so if the delete leaves nothing
+    // selected, this reset is what's actually left in place. Not
+    // redundant with __rsreadline_update's own point calculation (which
+    // always derives from _RSREADLINE_QUERY for a non-"none" direction
+    // regardless): this READLINE_POINT is purely about the visible cursor
+    // position in that no-selection-left fallback case.
+    lines.push("__rsreadline_delete_selected() {".to_string());
+    lines.push("    _RSREADLINE_BUSY=1".to_string());
+    lines.push("    if [[ -n \"$_RSREADLINE_SEL\" ]]; then".to_string());
+    lines.push("        READLINE_LINE=\"$_RSREADLINE_QUERY\"".to_string());
+    lines.push("        READLINE_POINT=${#READLINE_LINE}".to_string());
+    lines.push("        __rsreadline_update delete".to_string());
+    lines.push("    else".to_string());
+    lines.push("        __rsreadline_update stay".to_string());
+    lines.push("    fi".to_string());
+    lines.push("    _RSREADLINE_BUSY=0".to_string());
+    lines.push("}".to_string());
+    lines.push(String::new());
+
     lines.push(r#"bind -x '"\C-?": __rsreadline_backspace'"#.to_string());
     lines.push(r#"bind -x '"\C-h": __rsreadline_backspace'"#.to_string());
+    // Shift+Delete removes the currently selected suggestion from history.
+    // \e[3;2~ is the standard xterm/most-terminal-emulators CSI sequence
+    // for Shift+Delete. Static, unlike Up/Down/Tab: bash has no native
+    // binding for this key to fall back to, so there's nothing to
+    // dynamically rebind between.
+    lines.push(r#"bind -x '"\e[3;2~": __rsreadline_delete_selected'"#.to_string());
     lines.push(String::new());
 
     for byte in PRINTABLE_ASCII_RANGE {
@@ -280,6 +313,7 @@ mod tests {
 
         assert!(script.contains(r#"bind -x '"\C-?": __rsreadline_backspace'"#));
         assert!(script.contains(r#"bind -x '"\C-h": __rsreadline_backspace'"#));
+        assert!(script.contains(r#"bind -x '"\e[3;2~": __rsreadline_delete_selected'"#));
         // Tab starts bound to bash's own native completion, not us — see
         // tab_starts_and_resets_to_native_completion.
         assert!(script.contains(r#"bind '"\C-i": complete'"#));
@@ -398,6 +432,7 @@ mod tests {
             "__rsreadline_insert",
             "__rsreadline_backspace",
             "__rsreadline_tab_noop",
+            "__rsreadline_delete_selected",
         ] {
             let start = script
                 .find(&format!("{func}() {{"))
@@ -415,6 +450,28 @@ mod tests {
                 "{func} must clear the busy guard before returning"
             );
         }
+    }
+
+    #[test]
+    fn delete_selected_handler_has_both_branches() {
+        let script = generate(&default_config());
+        let start = script
+            .find("__rsreadline_delete_selected() {")
+            .expect("__rsreadline_delete_selected not found");
+        let body_end = script[start..]
+            .find("\n}")
+            .expect("__rsreadline_delete_selected has no closing brace");
+        let body = &script[start..start + body_end];
+
+        // Something selected: reset the line to the typed query, then
+        // delete — see the doc comment above the function in `generate`
+        // for why the reset has to happen before this call.
+        assert!(body.contains("READLINE_LINE=\"$_RSREADLINE_QUERY\""));
+        assert!(body.contains("READLINE_POINT=${#READLINE_LINE}"));
+        assert!(body.contains("__rsreadline_update delete"));
+        // Nothing selected: this binding is static (always reachable), so
+        // it still must redraw to repaint the DEBUG-trap's spurious clear.
+        assert!(body.contains("__rsreadline_update stay"));
     }
 
     #[test]

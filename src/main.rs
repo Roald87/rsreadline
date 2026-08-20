@@ -50,11 +50,27 @@ fn main() -> ExitCode {
 /// stored query back unchanged, so cycling keeps matching against what was
 /// actually typed rather than whatever the last selection preview left in
 /// READLINE_LINE. See ARCHITECTURE.md ("Selecting a suggestion").
+///
+/// `direction == "delete"` is the one case with a disk side effect: if a
+/// suggestion is currently selected, its underlying history entry is
+/// removed from `history_file` (all occurrences) before matches are
+/// recomputed, so the response already reflects the post-delete state in
+/// this single round trip. See ARCHITECTURE.md.
 fn cmd_render(config: &Config, line: &str, point: &str, selected: &str, direction: &str) -> String {
     let query = line_prefix(line, parse_usize(point));
-    let entries = history::load_entries(&config.history_file);
-    let matches = matcher::suggest(&entries, query, config.max_suggestions);
-    let new_selected = next_selected(parse_selected(selected), matches.len(), direction);
+    let mut entries = history::load_entries(&config.history_file);
+    let mut matches = matcher::suggest(&entries, query, config.max_suggestions);
+    let current = parse_selected(selected);
+
+    if direction == "delete"
+        && let Some(target) = current.and_then(|i| matches.get(i))
+    {
+        let _ = history::remove_entry(&config.history_file, target);
+        entries = history::load_entries(&config.history_file);
+        matches = matcher::suggest(&entries, query, config.max_suggestions);
+    }
+
+    let new_selected = next_selected(current, matches.len(), direction);
 
     draw(config, &matches, new_selected);
 
@@ -111,6 +127,11 @@ fn line_prefix(line: &str, point: usize) -> &str {
 ///   still needs to repaint over the DEBUG-trap preexec hook's harmless
 ///   spurious clear (see ARCHITECTURE.md) rather than leaving the block
 ///   blank until the next real keystroke.
+/// - "delete": like "stay", but clamped into the (possibly shrunk) new
+///   `count` — the one direction where the match list can legitimately be
+///   a different length than when `current` was chosen, since the caller
+///   just removed the selected entry from history. Deliberately distinct
+///   from "stay", which existing callers rely on as an exact no-op.
 /// - anything else (typing, e.g. "none"): clears the selection — suggestions
 ///   appear unselected as you type; only Up/Down picks one.
 fn next_selected(current: Option<usize>, count: usize, direction: &str) -> Option<usize> {
@@ -127,11 +148,13 @@ fn next_selected(current: Option<usize>, count: usize, direction: &str) -> Optio
             Some(i) => (i + count - 1) % count,
         }),
         "stay" => current,
+        "delete" => current.map(|i| i.min(count - 1)),
         _ => None,
     }
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 
@@ -183,5 +206,84 @@ mod tests {
         assert_eq!(parse_selected(""), None);
         assert_eq!(parse_selected("0"), Some(0));
         assert_eq!(parse_selected("3"), Some(3));
+    }
+
+    #[test]
+    fn delete_keeps_index_when_still_in_bounds() {
+        assert_eq!(next_selected(Some(1), 3, "delete"), Some(1));
+    }
+
+    #[test]
+    fn delete_clamps_to_new_last_index_when_out_of_bounds() {
+        assert_eq!(next_selected(Some(2), 2, "delete"), Some(1));
+    }
+
+    #[test]
+    fn delete_is_none_when_nothing_was_selected() {
+        assert_eq!(next_selected(None, 3, "delete"), None);
+    }
+
+    fn temp_history_file(contents: &str) -> std::path::PathBuf {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
+        let path = std::env::temp_dir().join(format!(
+            "rsreadline_main_test_{}_{}",
+            std::process::id(),
+            NEXT_ID.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::write(&path, contents).unwrap();
+        path
+    }
+
+    fn test_config(history_file: std::path::PathBuf) -> Config {
+        Config {
+            history_file,
+            max_suggestions: 5,
+            min_terminal_height: 15,
+        }
+    }
+
+    #[test]
+    fn cmd_render_delete_removes_selected_entry_from_disk() {
+        let path = temp_history_file("git status\ngit commit\ngit push\n");
+        let config = test_config(path.clone());
+
+        // Matches are most-recent-first, so index 0 is "git push".
+        let result = cmd_render(&config, "git", "3", "0", "delete");
+
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            "git status\ngit commit\n"
+        );
+        // Same slot now holds whatever backfilled it.
+        let (sel, count, fill) = split_render_result(&result);
+        assert_eq!(sel, "0");
+        assert_eq!(count, "2");
+        assert_eq!(fill, "git commit");
+
+        std::fs::remove_file(&path).unwrap();
+    }
+
+    #[test]
+    fn cmd_render_delete_with_nothing_selected_does_not_touch_disk() {
+        let path = temp_history_file("git status\ngit commit\n");
+        let config = test_config(path.clone());
+
+        cmd_render(&config, "git", "3", "", "delete");
+
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            "git status\ngit commit\n"
+        );
+
+        std::fs::remove_file(&path).unwrap();
+    }
+
+    fn split_render_result(result: &str) -> (&str, &str, &str) {
+        let mut parts = result.split('\x01');
+        let sel = parts.next().unwrap();
+        let count = parts.next().unwrap();
+        let fill = parts.next().unwrap();
+        (sel, count, fill)
     }
 }

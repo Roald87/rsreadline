@@ -5,7 +5,9 @@ for bash, built against your `.bash_history`. Zero-dependency Rust binary, wired
 bash via `bind -x`.
 
 While you type, up to 5 matching history entries show below the prompt.
-Select a suggestion using the arrow keys and press enter to submit.
+Select a suggestion using the arrow keys and press enter to submit. Press
+Shift+Delete on a selected suggestion to remove it from your history
+entirely (all occurrences).
 
 ## Install
 
