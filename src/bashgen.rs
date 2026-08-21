@@ -19,10 +19,11 @@ use crate::tty;
 pub fn generate(config: &Config) -> String {
     let exe_q = shell_single_quote(&current_exe_string());
     let clear_seq = dollar_quote(&tty::clear_sequence(config.max_suggestions));
+    let preexec_clear_seq = dollar_quote(&tty::preexec_clear_sequence(config.max_suggestions));
 
     let mut out = String::new();
     out.push_str(header());
-    out.push_str(&preexec_and_debug_trap(&clear_seq));
+    out.push_str(&preexec_and_debug_trap(&clear_seq, &preexec_clear_seq));
     out.push_str(&update_function(&exe_q));
     out.push_str(cycle_handlers());
     out.push_str(insert_handler());
@@ -73,19 +74,36 @@ bind '"\C-i": complete'
 /// `DEBUG` fires before every simple command, including commands *inside*
 /// our own `bind -x` handlers — `_RSREADLINE_BUSY` (set around each
 /// handler below) stops it from clearing mid-handler. One accepted gap: it
-/// also fires before a handler's very first statement, before the flag is
-/// set — harmless, since that handler's own final action redraws anyway.
+/// also fires once more before that, right as bash is about to invoke the
+/// handler itself (BASH_COMMAND is the handler's name, `_RSREADLINE_BUSY`
+/// isn't 1 yet) — harmless, since that handler's own final action redraws
+/// anyway. The same up-front firing happens for `PROMPT_COMMAND`
+/// (BASH_COMMAND == `__rsreadline_prompt_reset`).
+///
+/// Both of those still have the cursor at the input row, same as typing —
+/// only the *real* submitted command's firing is preceded by bash's own
+/// accept-line newline, which moves the cursor one row past where the
+/// block was drawn (see `tty::preexec_clear_sequence`'s doc comment).
+/// Branching on `BASH_COMMAND` tells the two apart: our own functions are
+/// always named `__rsreadline_*`, and that's never true of a real command
+/// line. Applying the cursor-up unconditionally instead (tried first) was
+/// wrong: on the harmless firings above it walked the cursor up into the
+/// prompt row and reserved/scrolled from there, visibly shoving the prompt
+/// line upward while leaving the real block, one row down, uncleared.
 /// Regression test: `tests/enter_preexec_clears_stale_suggestions.rs`.
-fn preexec_and_debug_trap(clear_seq: &str) -> String {
+fn preexec_and_debug_trap(plain_clear_seq: &str, preexec_clear_seq: &str) -> String {
     let mut out = String::from(
         r#"# See ARCHITECTURE.md for why this function and the trap below it exist.
 __rsreadline_preexec() {
     # Skip while one of our own handlers is running; it'll redraw when done.
     [[ "$_RSREADLINE_BUSY" == 1 ]] && return
-    printf '%s' "#,
+    case "$BASH_COMMAND" in
+        __rsreadline_*) printf '%s' "#,
     );
-    out.push_str(clear_seq);
-    out.push_str(" > /dev/tty\n}\ntrap __rsreadline_preexec DEBUG\n\n");
+    out.push_str(plain_clear_seq);
+    out.push_str(" > /dev/tty ;;\n        *) printf '%s' ");
+    out.push_str(preexec_clear_seq);
+    out.push_str(" > /dev/tty ;;\n    esac\n}\ntrap __rsreadline_preexec DEBUG\n\n");
     out
 }
 

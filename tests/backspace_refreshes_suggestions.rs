@@ -2,6 +2,17 @@
 //! continuously re-binds whatever key `stty erase` points to (DEL, almost
 //! always) back to its own default, silently ignoring our `bind -x` for it,
 //! unless `bind-tty-special-chars` is turned off. See ARCHITECTURE.md.
+//!
+//! Also covers a regression in `tty::preexec_clear_sequence` (the fix for
+//! `enter_preexec_clears_stale_suggestions.rs`): the `DEBUG` trap fires not
+//! just before the real submitted command but before every one of our own
+//! `bind -x` handlers too (see `preexec_and_debug_trap`'s doc comment). An
+//! earlier version of the fix applied the cursor-up correction
+//! unconditionally, which is only valid for the real-command case; applied
+//! here, before Backspace's own handler runs, it walked the cursor up into
+//! the prompt row and reserved/scrolled from there — visibly shoving the
+//! whole prompt line upward while leaving the actual block, one row down,
+//! uncleared.
 
 mod common;
 
@@ -47,5 +58,15 @@ fn backspace_triggers_our_handler_and_refreshes_suggestions() {
     assert!(
         !text.contains("\x1b[7m"),
         "typing must never select/highlight a suggestion, only Up/Down does:\n{text}"
+    );
+
+    // The DEBUG trap's harmless firing right before __rsreadline_backspace
+    // itself runs must use the plain clear (no leading cursor-up) — with
+    // config's default max_suggestions of 5, "\x1b[1A" can only be the
+    // cursor-up correction, never return_to_start(5)'s "\x1b[5A".
+    assert!(
+        !after_backspace.windows(4).any(|w| w == b"\x1b[1A"),
+        "backspace's DEBUG-trap clear used the cursor-up-adjusted sequence — \
+         that's only correct right after Enter, not before our own handler runs:\n{text}"
     );
 }

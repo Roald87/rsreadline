@@ -12,7 +12,14 @@
 //! text during the broken window. What we *can* check at the byte level is
 //! ordering: our clear sequence (starting with Index, ESC D — see
 //! `reserve_rows` in tty.rs) must be written before the submitted command's
-//! own output, not after.
+//! own output, not after — and that the clear is the `preexec` variant
+//! (`tty::preexec_clear_sequence`, starting with cursor-up `ESC [ 1 A`),
+//! not the plain one. Bash's own accept-line writes a newline before the
+//! `DEBUG` trap ever runs, so without that leading cursor-up the clear
+//! operates one row below the suggestion block it's meant to erase — the
+//! cause of a real corruption report (`rsreadline --version` printing as
+//! `rsreadline 0.2.1sion`, the stale tail of a `rsreadline --version`
+//! suggestion one row down).
 
 mod common;
 
@@ -51,5 +58,17 @@ fn preexec_clears_the_block_before_command_output_not_after() {
         clear_pos < output_pos,
         "clear sequence came AFTER the command's output instead of before — \
          the suggestion block was stale while the command ran:\n{text:?}"
+    );
+
+    // The clear must be preexec_clear_sequence's cursor-up-then-clear shape
+    // (ESC [ 1 A immediately before the ESC D reserve), not plain
+    // clear_sequence — otherwise it clears one row too low and leaves slot
+    // 0's stale text sitting under the command's output. See tty.rs's
+    // `preexec_clear_sequence` doc comment.
+    let cursor_up_pos = clear_pos.and_then(|p| p.checked_sub(4));
+    assert_eq!(
+        cursor_up_pos.map(|p| &after_enter[p..p + 4]),
+        Some(&b"\x1b[1A"[..]),
+        "expected cursor-up (ESC [ 1 A) immediately before the clear's ESC D reserve:\n{text:?}"
     );
 }

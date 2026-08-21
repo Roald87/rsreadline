@@ -26,6 +26,11 @@ const CLEAR_LINE: &str = "\x1b[2K\r";
 // mid-redisplay, so there's no stale on-screen model for a scroll to
 // invalidate.
 const INDEX_DOWN_1: &str = "\x1bD";
+// Cursor Up (CUU), pure relative movement that never scrolls — used only by
+// `preexec_clear_sequence` to undo the newline bash's own accept-line emits
+// before the DEBUG trap runs, putting the cursor back in the "at the input
+// row" frame that `render_sequence`/`clear_sequence` assume.
+const CURSOR_UP_1: &str = "\x1b[1A";
 // Reverse video rather than a fixed color: it inverts whatever foreground/
 // background the user's own terminal theme already has, so it can't clash.
 const REVERSE_VIDEO_START: &str = "\x1b[7m";
@@ -131,6 +136,24 @@ pub fn clear_sequence(block_size: usize) -> String {
     out
 }
 
+/// The DEBUG-trap variant of `clear_sequence`: bash's own accept-line
+/// already moved the cursor down one row (its post-Enter `\r\n`) by the
+/// time the trap runs, one row past where `render_sequence` actually drew
+/// slot 0 while typing. Without the leading cursor-up, `clear_sequence`
+/// clears one row too low, leaving slot 0's stale text on screen for the
+/// submitted command's output to land on top of — see
+/// `tests/enter_preexec_clears_stale_suggestions.rs`.
+///
+/// The trailing cursor-down undoes that same correction for final cursor
+/// position: `clear_sequence` always returns to wherever it started, which
+/// after the leading cursor-up is the *prompt* row, not the row bash's
+/// accept-line had already advanced to and expects the command's output to
+/// begin on. Without it, the output prints one row too high, overwriting
+/// the prompt line itself instead of the blank row below it.
+pub fn preexec_clear_sequence(block_size: usize) -> String {
+    format!("{CURSOR_UP_1}{}{CURSOR_DOWN_1}", clear_sequence(block_size))
+}
+
 /// Shown in place of the block when the terminal is shorter than
 /// `min_terminal_height`. Mid-edit like `render_sequence` — no row
 /// reservation here either.
@@ -203,6 +226,18 @@ mod tests {
         let seq = clear_sequence(5);
         assert_eq!(seq.matches(CLEAR_LINE).count(), 5);
         assert!(!seq.contains("ls"));
+    }
+
+    #[test]
+    fn preexec_clear_sequence_undoes_accept_lines_newline_first() {
+        // Must be exactly CURSOR_UP_1, the plain clear_sequence, then
+        // CURSOR_DOWN_1 — anything else means either the rows cleared or
+        // the final cursor position (see the doc comment) is off again.
+        let seq = preexec_clear_sequence(4);
+        assert_eq!(
+            seq,
+            format!("{CURSOR_UP_1}{}{CURSOR_DOWN_1}", clear_sequence(4))
+        );
     }
 
     #[test]

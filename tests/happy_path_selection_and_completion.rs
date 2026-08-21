@@ -11,10 +11,52 @@
 //!
 //! Drives a real bash session in a pty (see tests/common) since none of
 //! this is observable from generated-script text alone.
+//!
+//! Phase 3/6's Enter checks assert byte-exact structure — our DEBUG-trap
+//! clear sequence immediately followed by clean output — rather than a
+//! loose `contains("gamma")`. A loose substring check can't tell "gamma"
+//! printed cleanly on its own row apart from "gamma" glued onto stale
+//! suggestion text or printed over the prompt row: both real-world
+//! regressions (see `enter_preexec_clears_stale_suggestions.rs`) still
+//! contain the substring "gamma" somewhere in the raw bytes.
+//!
+//! The expected sequence below is a literal, not built via `tty.rs`
+//! (there's no way to reach it from an integration test — this is a
+//! binary-only crate) — which also means it can't go tautological the way
+//! importing the function under test would: if `tty.rs` regresses, this
+//! byte literal doesn't regress with it.
 
 mod common;
 
 use common::BashSession;
+
+/// `tty::preexec_clear_sequence(5)`'s shape, hand-verified against a real
+/// pty capture — cursor-up (undo accept-line's own newline), reserve 5
+/// rows, clear them, return, cursor-down (land back where accept-line put
+/// it). 5 is config's default `max_suggestions`; the fake `$HOME` this
+/// test spawns bash in has no `config.toml`, so the binary falls back to
+/// it (see `config::DEFAULT_MAX_SUGGESTIONS`).
+const PREEXEC_CLEAR_5: &[u8] = b"\x1b[1A\
+\x1bD\x1bD\x1bD\x1bD\x1bD\x1b[5A\
+\x1b[1B\x1b[2K\r\x1b[1B\x1b[2K\r\x1b[1B\x1b[2K\r\x1b[1B\x1b[2K\r\x1b[1B\x1b[2K\r\x1b[5A\
+\x1b[1B";
+
+/// Asserts `after_enter` contains our DEBUG-trap clear sequence
+/// immediately followed by `expected_output` — i.e. the submitted
+/// command's output landed cleanly on its own row, not glued onto or
+/// overwriting stale block/prompt content.
+fn assert_clean_output_after_enter(after_enter: &[u8], expected_output: &str) {
+    let mut expected_tail = PREEXEC_CLEAR_5.to_vec();
+    expected_tail.extend_from_slice(expected_output.as_bytes());
+    let text = String::from_utf8_lossy(after_enter);
+    assert!(
+        after_enter
+            .windows(expected_tail.len())
+            .any(|w| w == expected_tail.as_slice()),
+        "expected our clear sequence immediately followed by clean {expected_output:?} output, \
+         found neither (or something glued in between) in:\n{text:?}"
+    );
+}
 
 #[test]
 fn selecting_a_suggestion_and_completing_with_tab() {
@@ -58,11 +100,7 @@ fn selecting_a_suggestion_and_completing_with_tab() {
 
     // --- Phase 3: Enter submits the SELECTED suggestion, not "echo" ---
     let after_enter = session.send_and_drain(b"\n");
-    let text = String::from_utf8_lossy(&after_enter);
-    assert!(
-        text.contains("gamma"),
-        "expected the selected command's real output ('gamma') after Enter:\n{text}"
-    );
+    assert_clean_output_after_enter(&after_enter, "gamma\r\n");
 
     // --- Phase 4: fresh prompt, Tab with nothing selected is bash's own
     // native completion, not us. Native completion's exact effect on
@@ -114,9 +152,5 @@ fn selecting_a_suggestion_and_completing_with_tab() {
 
     // The line must still be the selection, unaffected by the no-op Tab.
     let after_enter2 = session.send_and_drain(b"\n");
-    let text = String::from_utf8_lossy(&after_enter2);
-    assert!(
-        text.contains("gamma"),
-        "expected the still-selected command to run after Enter:\n{text}"
-    );
+    assert_clean_output_after_enter(&after_enter2, "gamma\r\n");
 }
