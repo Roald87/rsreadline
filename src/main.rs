@@ -15,6 +15,10 @@ fn main() -> ExitCode {
     let refs: Vec<&str> = args.iter().map(String::as_str).collect();
 
     match refs.as_slice() {
+        ["--version" | "-V"] => {
+            println!("rsreadline {}", env!("CARGO_PKG_VERSION"));
+            ExitCode::SUCCESS
+        }
         ["init", "bash"] => {
             print!("{}", bashgen::generate(&Config::load()));
             ExitCode::SUCCESS
@@ -28,7 +32,7 @@ fn main() -> ExitCode {
         }
         _ => {
             eprintln!(
-                "usage: rsreadline <init bash | render <line> <point> <selected> <direction>>"
+                "usage: rsreadline <--version | init bash | render <line> <point> <selected> <direction>>"
             );
             ExitCode::FAILURE
         }
