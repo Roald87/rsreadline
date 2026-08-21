@@ -20,8 +20,8 @@ Require cargo
 
 Set Shell "bash"
 Set FontSize 20
-Set Width 1200
-Set Height 650
+Set Width 1000
+Set Height 500
 Set Theme "Dracula"
 Set Padding 20
 Set TypingSpeed 120ms
@@ -32,8 +32,9 @@ Enter
 Show
 
 # Typing shows matching history entries below the prompt.
-Type "git "
-Sleep 1200ms
+Sleep 1000ms
+Type "git"
+Sleep 700ms
 
 # Arrow keys select a suggestion, highlighted in reverse video; cycle a
 # few times so the selection visibly moves, not just the top match.
