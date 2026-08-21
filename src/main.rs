@@ -5,6 +5,8 @@ mod bashgen;
 mod config;
 mod history;
 mod matcher;
+#[cfg(test)]
+mod test_support;
 mod tty;
 
 use config::Config;
@@ -227,17 +229,7 @@ mod tests {
         assert_eq!(next_selected(None, 3, "delete"), None);
     }
 
-    fn temp_history_file(contents: &str) -> std::path::PathBuf {
-        use std::sync::atomic::{AtomicUsize, Ordering};
-        static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "rsreadline_main_test_{}_{}",
-            std::process::id(),
-            NEXT_ID.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::write(&path, contents).unwrap();
-        path
-    }
+    use crate::test_support::temp_history_file;
 
     fn test_config(history_file: std::path::PathBuf) -> Config {
         Config {
@@ -250,7 +242,7 @@ mod tests {
 
     #[test]
     fn cmd_render_delete_removes_selected_entry_from_disk() {
-        let path = temp_history_file("git status\ngit commit\ngit push\n");
+        let path = temp_history_file("main", "git status\ngit commit\ngit push\n");
         let config = test_config(path.clone());
 
         // Matches are most-recent-first, so index 0 is "git push".
@@ -271,7 +263,7 @@ mod tests {
 
     #[test]
     fn cmd_render_delete_with_nothing_selected_does_not_touch_disk() {
-        let path = temp_history_file("git status\ngit commit\n");
+        let path = temp_history_file("main", "git status\ngit commit\n");
         let config = test_config(path.clone());
 
         cmd_render(&config, "git", "3", "", "delete");

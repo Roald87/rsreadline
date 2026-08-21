@@ -98,21 +98,10 @@ fn is_timestamp_comment(line: &str) -> bool {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use crate::test_support::temp_history_file as temp_file;
 
-    static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
-
-    /// Writes `contents` to a uniquely-named file under the system temp dir
-    /// so parallel tests don't collide, and returns its path.
-    fn temp_history_file(contents: &str) -> PathBuf {
-        let path = std::env::temp_dir().join(format!(
-            "rsreadline_history_test_{}_{}",
-            std::process::id(),
-            NEXT_ID.fetch_add(1, Ordering::Relaxed)
-        ));
-        fs::write(&path, contents).unwrap();
-        path
+    fn temp_history_file(contents: &str) -> std::path::PathBuf {
+        temp_file("history", contents)
     }
 
     #[test]
