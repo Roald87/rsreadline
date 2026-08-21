@@ -1,6 +1,7 @@
 //! Substring matching over history entries: prefix-ranked, deduped,
 //! most-recent-first.
 
+use std::borrow::Cow;
 use std::collections::HashSet;
 
 /// Returns up to `max` history entries matching `query`, most-relevant first:
@@ -18,10 +19,10 @@ pub fn suggest(entries: &[String], query: &str, max: usize, case_sensitive: bool
         return Vec::new();
     }
 
-    let query = &if case_sensitive {
-        query.to_string()
+    let query: Cow<str> = if case_sensitive {
+        Cow::Borrowed(query)
     } else {
-        query.to_lowercase()
+        Cow::Owned(query.to_lowercase())
     };
 
     let mut seen: HashSet<&str> = HashSet::new();
@@ -32,17 +33,17 @@ pub fn suggest(entries: &[String], query: &str, max: usize, case_sensitive: bool
         if !seen.insert(entry.as_str()) {
             continue;
         }
-        let candidate = if case_sensitive {
-            entry.clone()
+        let candidate: Cow<str> = if case_sensitive {
+            Cow::Borrowed(entry.as_str())
         } else {
-            entry.to_lowercase()
+            Cow::Owned(entry.to_lowercase())
         };
-        if candidate.starts_with(query.as_str()) {
+        if candidate.starts_with(query.as_ref()) {
             prefix_matches.push(entry.clone());
             if prefix_matches.len() >= max {
                 break;
             }
-        } else if candidate.contains(query.as_str()) {
+        } else if candidate.contains(query.as_ref()) {
             contains_matches.push(entry.clone());
         }
     }
