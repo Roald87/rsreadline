@@ -60,7 +60,13 @@ fn main() -> ExitCode {
 /// `render` call for the redraw.
 fn cmd_render(config: &Config, line: &str, point: &str, selected: &str, direction: &str) -> String {
     let query = line_prefix(line, parse_usize(point));
-    let mut entries = history::load_entries(&config.history_file);
+    let current = parse_selected(selected);
+
+    let mut entries = if query.is_empty() {
+        Vec::new()
+    } else {
+        history::load_entries(&config.history_file)
+    };
     let suggest = |entries: &[String]| {
         matcher::suggest(
             entries,
@@ -70,13 +76,12 @@ fn cmd_render(config: &Config, line: &str, point: &str, selected: &str, directio
         )
     };
     let mut matches = suggest(&entries);
-    let current = parse_selected(selected);
 
     if direction == "delete"
-        && let Some(target) = current.and_then(|i| matches.get(i))
+        && let Some(target) = current.and_then(|i| matches.get(i)).cloned()
     {
-        let _ = history::remove_entry(&config.history_file, target);
-        entries = history::load_entries(&config.history_file);
+        let _ = history::remove_entry(&config.history_file, &target);
+        entries.retain(|e| *e != target);
         matches = suggest(&entries);
     }
 
