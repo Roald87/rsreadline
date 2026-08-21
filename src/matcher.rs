@@ -39,6 +39,9 @@ pub fn suggest(entries: &[String], query: &str, max: usize, case_sensitive: bool
         };
         if candidate.starts_with(query.as_str()) {
             prefix_matches.push(entry.clone());
+            if prefix_matches.len() >= max {
+                break;
+            }
         } else if candidate.contains(query.as_str()) {
             contains_matches.push(entry.clone());
         }
