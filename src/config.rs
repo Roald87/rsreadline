@@ -8,12 +8,14 @@ use std::path::{Path, PathBuf};
 const DEFAULT_HISTORY_FILE: &str = "~/.bash_history";
 const DEFAULT_MAX_SUGGESTIONS: usize = 5;
 const DEFAULT_MIN_TERMINAL_HEIGHT: u16 = 15;
+const DEFAULT_CASE_SENSITIVE: bool = false;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Config {
     pub history_file: PathBuf,
     pub max_suggestions: usize,
     pub min_terminal_height: u16,
+    pub case_sensitive: bool,
 }
 
 impl Config {
@@ -49,6 +51,11 @@ impl Config {
                         cfg.min_terminal_height = n;
                     }
                 }
+                "case_sensitive" => {
+                    if let Ok(b) = value.parse() {
+                        cfg.case_sensitive = b;
+                    }
+                }
                 _ => {}
             }
         }
@@ -60,6 +67,7 @@ impl Config {
             history_file: expand_tilde(DEFAULT_HISTORY_FILE, home),
             max_suggestions: DEFAULT_MAX_SUGGESTIONS,
             min_terminal_height: DEFAULT_MIN_TERMINAL_HEIGHT,
+            case_sensitive: DEFAULT_CASE_SENSITIVE,
         }
     }
 }
@@ -99,16 +107,17 @@ mod tests {
         assert_eq!(cfg.history_file, home().join(".bash_history"));
         assert_eq!(cfg.max_suggestions, 5);
         assert_eq!(cfg.min_terminal_height, 15);
+        assert!(!cfg.case_sensitive);
     }
 
     #[test]
     fn all_keys_set() {
-        let text =
-            "history_file = ~/custom_history\nmax_suggestions = 3\nmin_terminal_height = 20\n";
+        let text = "history_file = ~/custom_history\nmax_suggestions = 3\nmin_terminal_height = 20\ncase_sensitive = true\n";
         let cfg = Config::parse(text, Some(&home()));
         assert_eq!(cfg.history_file, home().join("custom_history"));
         assert_eq!(cfg.max_suggestions, 3);
         assert_eq!(cfg.min_terminal_height, 20);
+        assert!(cfg.case_sensitive);
     }
 
     #[test]

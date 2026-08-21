@@ -53,6 +53,7 @@ rm -rf ~/.config/rsreadline   # if you had a config.toml
 history_file = "~/.bash_history"
 max_suggestions = 5
 min_terminal_height = 15
+case_sensitive = false
 ```
 
 Changing `max_suggestions` requires re-sourcing `.bashrc` since it's baked
