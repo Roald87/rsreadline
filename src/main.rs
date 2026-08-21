@@ -61,12 +61,15 @@ fn main() -> ExitCode {
 fn cmd_render(config: &Config, line: &str, point: &str, selected: &str, direction: &str) -> String {
     let query = line_prefix(line, parse_usize(point));
     let mut entries = history::load_entries(&config.history_file);
-    let mut matches = matcher::suggest(
-        &entries,
-        query,
-        config.max_suggestions,
-        config.case_sensitive,
-    );
+    let suggest = |entries: &[String]| {
+        matcher::suggest(
+            entries,
+            query,
+            config.max_suggestions,
+            config.case_sensitive,
+        )
+    };
+    let mut matches = suggest(&entries);
     let current = parse_selected(selected);
 
     if direction == "delete"
@@ -74,12 +77,7 @@ fn cmd_render(config: &Config, line: &str, point: &str, selected: &str, directio
     {
         let _ = history::remove_entry(&config.history_file, target);
         entries = history::load_entries(&config.history_file);
-        matches = matcher::suggest(
-            &entries,
-            query,
-            config.max_suggestions,
-            config.case_sensitive,
-        );
+        matches = suggest(&entries);
     }
 
     let new_selected = next_selected(current, matches.len(), direction);
