@@ -59,9 +59,21 @@ Sleep 1200ms
 Ctrl+C
 Sleep 800ms
 
+# Esc discards the line and suggestions.
+Type@30ms "# Esc clears the line"
+Sleep 800ms
+Enter
+Sleep 1200ms
+Type "cargo"
+Sleep 1200ms
+Down
+Sleep 700ms
+Escape
+Sleep 1200ms
+
 # An on-screen caption explaining the shortcut before demonstrating it
 # (typed as a bash comment, so it's a no-op when it runs).
-Type@30ms "# Shift+Delete removes suggestion from history"
+Type@30ms "# Shift+Delete removes from history"
 Sleep 800ms
 Enter
 Sleep 1200ms
