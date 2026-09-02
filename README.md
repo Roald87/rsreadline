@@ -1,4 +1,4 @@
-<img src="assets/logo.svg" alt="rsreadline logo" width="80" align="left">
+![rsreadline](assets/social-preview.png)
 
 # rsreadline
 
