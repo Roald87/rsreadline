@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" width="1280" height="640">
+  <defs>
+    <style>
+      .mono { font-family: 'DejaVu Sans Mono', 'Liberation Mono', monospace; font-weight: 700; }
+      .monoreg { font-family: 'DejaVu Sans Mono', 'Liberation Mono', monospace; font-weight: 400; }
+    </style>
+  </defs>
+
+  <rect width="1280" height="640" fill="#1B1B1B"/>
+
+  <!-- logo -->
+  <g transform="translate(128,150)">
+    <rect x="0" y="0" width="360" height="360" fill="#1B1B1B"
+          stroke="#E8E8E8" stroke-opacity="0.20" stroke-width="2"/>
+    <g transform="scale(0.703125)">
+      <text class="mono" font-size="56" x="84" y="140">
+        <tspan fill="#5F5F5F">$ </tspan><tspan fill="#BFBFBF">rs</tspan><tspan fill="#BFBFBF">&#x2588;</tspan>
+      </text>
+      <text class="mono" font-size="56" x="84" y="228" fill="#868686">rsync</text>
+      <rect x="52" y="270" width="414" height="80" fill="#E8E8E8"/>
+      <text class="mono" font-size="58" x="84" y="327" fill="#1B1B1B">rsreadline</text>
+      <text class="mono" font-size="56" x="84" y="420" fill="#868686">main.rs</text>
+    </g>
+  </g>
+
+  <!-- wordmark: reverse-video, like the selected suggestion in the logo -->
+  <rect x="540" y="250" width="610" height="124" fill="#E8E8E8"/>
+  <text class="mono" font-size="92" x="568" y="342" fill="#1B1B1B">rsreadline</text>
+  <text class="monoreg" font-size="26" x="572" y="420" fill="#8A8A8A">live history suggestions for bash</text>
+</svg>

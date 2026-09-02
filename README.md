@@ -1,4 +1,4 @@
-# rsreadline
+![rsreadline — live history suggestions for bash](assets/social-preview.png)
 
 Live, [PSReadline](https://github.com/PowerShell/PSReadLine)-style command suggestions
 for bash, built against your `.bash_history`. Zero-dependency Rust binary, wired into
