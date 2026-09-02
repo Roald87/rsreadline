@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <style>
+      .mono { font-family: 'DejaVu Sans Mono', 'Liberation Mono', monospace; font-weight: 700; }
+    </style>
+  </defs>
+
+  <!-- terminal card -->
+  <rect x="0" y="0" width="512" height="512" fill="#1B1B1B"/>
+
+  <!-- prompt line: prompt sigil + typed query "rs" + block cursor -->
+  <text class="mono" font-size="56" x="84" y="140">
+    <tspan fill="#5F5F5F">$ </tspan><tspan fill="#BFBFBF">rs</tspan><tspan fill="#BFBFBF">&#x2588;</tspan>
+  </text>
+
+  <!-- suggestion 1 (muted) -->
+  <text class="mono" font-size="56" x="84" y="228" fill="#868686">rsync</text>
+
+  <!-- suggestion 2 (selected) — reverse-video highlight, square corners -->
+  <rect x="52" y="270" width="414" height="80" fill="#E8E8E8"/>
+  <text class="mono" font-size="58" x="84" y="327" fill="#1B1B1B">rsreadline</text>
+
+  <!-- suggestion 3 (muted) — a .rs file matched on the extension -->
+  <text class="mono" font-size="56" x="84" y="420" fill="#868686">main.rs</text>
+</svg>
