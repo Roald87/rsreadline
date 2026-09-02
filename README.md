@@ -1,3 +1,5 @@
+<img src="assets/logo.svg" alt="rsreadline logo" width="80" align="left">
+
 # rsreadline
 
 Live, [PSReadline](https://github.com/PowerShell/PSReadLine)-style command suggestions
