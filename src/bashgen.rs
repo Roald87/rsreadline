@@ -17,8 +17,18 @@ use crate::tty;
 /// Shared by `header` (initial state), `update_function` (dynamic rebind
 /// when a call leaves nothing to cycle through), and `prompt_reset` (reset
 /// for the next line).
+///
+/// Both key forms: `\e[A`/`\e[B` normally, `\eOA`/`\eOB` when the terminal
+/// is in application cursor-key mode (DECCKM) — which a program that
+/// enabled it and got Ctrl+C'd before resetting it (e.g. `dotnet build`)
+/// leaves behind. `update_function` rebinds the same four.
 fn native_up_down_bindings(indent: &str) -> String {
-    format!("{indent}bind '\"\\e[A\": previous-history'\n{indent}bind '\"\\e[B\": next-history'\n")
+    format!(
+        "{indent}bind '\"\\e[A\": previous-history'\n\
+         {indent}bind '\"\\e[B\": next-history'\n\
+         {indent}bind '\"\\eOA\": previous-history'\n\
+         {indent}bind '\"\\eOB\": next-history'\n"
+    )
 }
 
 /// Tab's native (non-noop) binding, `indent`-prefixed — same sharing as
@@ -187,6 +197,8 @@ fn update_function(exe_q: &str) -> String {
     if [[ "${count:-0}" -gt 0 ]]; then
         bind -x '"\e[A": __rsreadline_up'
         bind -x '"\e[B": __rsreadline_down'
+        bind -x '"\eOA": __rsreadline_up'
+        bind -x '"\eOB": __rsreadline_down'
     else
 "#,
     );
@@ -565,6 +577,22 @@ mod tests {
             script[prompt_reset_start..prompt_reset_start + body_end]
                 .contains(r#"bind '"\C-i": complete'"#)
         );
+    }
+
+    #[test]
+    fn up_down_bind_both_normal_and_application_cursor_key_forms() {
+        // A program that enabled DECCKM and got Ctrl+C'd before resetting it
+        // (e.g. dotnet build) leaves the terminal sending \eOA/\eOB for the
+        // arrows — bind those too or suggestion cycling breaks until reset.
+        let script = generate(&default_config());
+        for seq in [r#"\e[A"#, r#"\e[B"#, r#"\eOA"#, r#"\eOB"#] {
+            assert!(
+                script.contains(&format!(r#"bind '"{seq}": "#)),
+                "missing native binding for {seq}"
+            );
+        }
+        assert!(script.contains(r#"bind -x '"\eOA": __rsreadline_up'"#));
+        assert!(script.contains(r#"bind -x '"\eOB": __rsreadline_down'"#));
     }
 
     #[test]
