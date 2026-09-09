@@ -45,9 +45,9 @@ span multiple files and are easy to violate by accident when adding a new
 key handler. Module-level rationale lives as `//!` doc comments at the top
 of each `src/*.rs` file instead of being duplicated here.
 
-- `main.rs` — subcommand dispatch: `--version`, `init bash` (calls into
-  `bashgen`), `render <line> <point> <selected> <direction>` (the per-keystroke
-  round trip).
+- `main.rs` — subcommand dispatch: `--version`, `--help`, `--update`
+  (calls into `update`), `init bash` (calls into `bashgen`), `render <line>
+  <point> <selected> <direction>` (the per-keystroke round trip).
 - `bashgen.rs` — generates the bash glue script `init bash` prints. This is
   the biggest and most subtle file: one `bind -x` handler per key, a `DEBUG`
   trap that clears the suggestion block before a submitted command runs, and
@@ -63,6 +63,8 @@ of each `src/*.rs` file instead of being duplicated here.
   Shift+Delete).
 - `config.rs` — hand-rolled `key = value` parser for
   `~/.config/rsreadline/config.toml`.
+- `update.rs` — `--update`: shells out to `curl` for the latest GitHub
+  release and renames it over the running binary.
 
 There is no `lib.rs` — this is a binary-only crate, so integration tests
 can't import internal modules; they interact only via `env!("CARGO_BIN_EXE_rsreadline")`
