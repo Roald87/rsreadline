@@ -1,5 +1,5 @@
 //! Subcommand dispatch for the `rsreadline` binary: `init bash` (see
-//! `bashgen`) and `render` (see `cmd_render`).
+//! `bashgen`), `render` (see `cmd_render`), and `--update` (see `update`).
 
 mod bashgen;
 mod config;
@@ -8,6 +8,9 @@ mod matcher;
 #[cfg(test)]
 mod test_support;
 mod tty;
+mod update;
+
+const USAGE: &str = "usage: rsreadline <--version | --update [--force] | --help | init bash | render <line> <point> <selected> <direction>>";
 
 use config::Config;
 use std::process::ExitCode;
@@ -21,6 +24,20 @@ fn main() -> ExitCode {
             println!("rsreadline {}", env!("CARGO_PKG_VERSION"));
             ExitCode::SUCCESS
         }
+        ["--help" | "-h"] => {
+            println!("{USAGE}");
+            ExitCode::SUCCESS
+        }
+        ["--update"] | ["--update", "--force"] => {
+            let force = refs == ["--update", "--force"];
+            match update::run(force) {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(msg) => {
+                    eprintln!("rsreadline: update failed: {msg}");
+                    ExitCode::FAILURE
+                }
+            }
+        }
         ["init", "bash"] => {
             print!("{}", bashgen::generate(&Config::load()));
             ExitCode::SUCCESS
@@ -33,9 +50,7 @@ fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         _ => {
-            eprintln!(
-                "usage: rsreadline <--version | init bash | render <line> <point> <selected> <direction>>"
-            );
+            eprintln!("{USAGE}");
             ExitCode::FAILURE
         }
     }

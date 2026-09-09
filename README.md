@@ -24,6 +24,16 @@ now). Or build from source:
 cargo build --release
 ```
 
+## Update
+
+```sh
+rsreadline --update          # no-op if already on the latest release
+rsreadline --update --force   # re-download even when versions match
+```
+
+Fetches the latest GitHub release and replaces the running binary in place
+(needs `curl`). Restart bash afterwards.
+
 ## Setup
 
 Add to `.bashrc`:
