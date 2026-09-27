@@ -86,6 +86,7 @@ bind 'set bind-tty-special-chars off'
 # snappy — same tradeoff vim's ttimeoutlen makes.
 bind 'set keyseq-timeout 50'
 _RSREADLINE_SEL=""
+_RSREADLINE_SEL_TEXT=""
 _RSREADLINE_QUERY=""
 _RSREADLINE_BUSY=0
 "#,
@@ -160,9 +161,13 @@ fn read_result_line() -> String {
 }
 
 /// The handler every key binding below eventually calls. For `direction ==
-/// none` (typing), `READLINE_LINE` becomes the query and is stored into
-/// `_RSREADLINE_QUERY`; otherwise the stored query is reused, so cycling
-/// matches what was typed, not the last selection preview.
+/// none` (typing), the text before the cursor becomes the query and is
+/// stored into `_RSREADLINE_QUERY`; otherwise the stored query is reused,
+/// so cycling matches what's displayed, not the last selection preview.
+/// Regression test: `tests/cycling_after_mid_line_edit_uses_displayed_matches.rs`.
+///
+/// `_RSREADLINE_SEL_TEXT` holds the highlighted entry, for
+/// `delete_selected_handler` to delete by text.
 ///
 /// Afterward, Up/Down and Tab are re-pointed based on the response:
 /// Up/Down to our cycle handlers when there's something to cycle, else
@@ -174,22 +179,18 @@ fn read_result_line() -> String {
 fn update_function(exe_q: &str) -> String {
     let mut out = String::from(
         r#"__rsreadline_update() {
-    local direction="$1" query point result sel count fill
+    local direction="$1" result sel count fill
     if [[ "$direction" == none ]]; then
-        _RSREADLINE_QUERY="$READLINE_LINE"
-        query="$READLINE_LINE"
-        point="$READLINE_POINT"
-    else
-        query="$_RSREADLINE_QUERY"
-        point=${#_RSREADLINE_QUERY}
+        _RSREADLINE_QUERY="${READLINE_LINE:0:READLINE_POINT}"
     fi
     result=$("#,
     );
     out.push_str(exe_q);
-    out.push_str(" render \"$query\" \"$point\" \"$_RSREADLINE_SEL\" \"$direction\")\n");
+    out.push_str(" render \"$_RSREADLINE_QUERY\" \"${#_RSREADLINE_QUERY}\" \"$_RSREADLINE_SEL\" \"$direction\" \"$_RSREADLINE_SEL_TEXT\")\n");
     out.push_str(&read_result_line());
     out.push_str(
         r#"    _RSREADLINE_SEL="$sel"
+    _RSREADLINE_SEL_TEXT="$fill"
     if [[ -n "$fill" ]]; then
         READLINE_LINE="$fill"
         READLINE_POINT=${#READLINE_LINE}
@@ -382,6 +383,7 @@ fn prompt_reset(clear_seq: &str) -> String {
     out.push_str(
         r#" > /dev/tty
     _RSREADLINE_SEL=""
+    _RSREADLINE_SEL_TEXT=""
     _RSREADLINE_QUERY=""
 "#,
     );

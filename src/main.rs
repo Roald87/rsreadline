@@ -10,7 +10,7 @@ mod test_support;
 mod tty;
 mod update;
 
-const USAGE: &str = "usage: rsreadline <--version | --update [--force] | --help | init bash | render <line> <point> <selected> <direction>>";
+const USAGE: &str = "usage: rsreadline <--version | --update [--force] | --help | init bash | render <line> <point> <selected> <direction> [<target>]>";
 
 use config::Config;
 use std::process::ExitCode;
@@ -42,10 +42,13 @@ fn main() -> ExitCode {
             print!("{}", bashgen::generate(&Config::load()));
             ExitCode::SUCCESS
         }
-        ["render", line, point, selected, direction] => {
+        // `target` is optional so shells still running a script generated
+        // by an older binary keep working after `--update`.
+        ["render", line, point, selected, direction, rest @ ..] if rest.len() <= 1 => {
+            let target = rest.first().copied().unwrap_or("");
             print!(
                 "{}",
-                cmd_render(&Config::load(), line, point, selected, direction)
+                cmd_render(&Config::load(), line, point, selected, direction, target)
             );
             ExitCode::SUCCESS
         }
@@ -62,18 +65,25 @@ fn main() -> ExitCode {
 /// for the bash glue. `selected`/`fill_text` are empty unless something is
 /// actually selected.
 ///
-/// The bash glue decides what `line`/`point` mean: typing (`direction ==
-/// "none"`) passes the current READLINE_LINE, which also becomes the
-/// stored query; cycling passes the stored query back unchanged, so it
-/// matches what was typed, not the last selection preview
-/// (`_RSREADLINE_QUERY` in bashgen.rs).
+/// The query is `line`'s first `point` characters. The bash glue passes
+/// its stored query (`_RSREADLINE_QUERY` in bashgen.rs), so cycling
+/// matches what was typed, not the last selection preview.
 ///
-/// `direction == "delete"` also removes the selected entry from
-/// `history_file` (all occurrences) before recomputing matches, reusing
-/// this function rather than a separate subcommand — a delete is just
-/// another direction, and a dedicated subcommand would still need a second
-/// `render` call for the redraw.
-fn cmd_render(config: &Config, line: &str, point: &str, selected: &str, direction: &str) -> String {
+/// `direction == "delete"` also removes `target` (the highlighted entry)
+/// from `history_file` (all occurrences) before recomputing matches,
+/// reusing this function rather than a separate subcommand — a delete is
+/// just another direction, and a dedicated subcommand would still need a
+/// second `render` call for the redraw. By text, not `selected`'s index:
+/// another shell's `history -a` can shift indexes between renders. Falls
+/// back to the index if `target` is empty.
+fn cmd_render(
+    config: &Config,
+    line: &str,
+    point: &str,
+    selected: &str,
+    direction: &str,
+    target: &str,
+) -> String {
     let query = line_prefix(line, parse_usize(point));
     let current = parse_selected(selected);
 
@@ -92,8 +102,12 @@ fn cmd_render(config: &Config, line: &str, point: &str, selected: &str, directio
     };
     let mut matches = suggest(&entries);
 
+    let target = match current {
+        Some(_) if !target.is_empty() => Some(target.to_string()),
+        _ => current.and_then(|i| matches.get(i)).cloned(),
+    };
     if direction == "delete"
-        && let Some(target) = current.and_then(|i| matches.get(i)).cloned()
+        && let Some(target) = target
     {
         let _ = history::remove_entry(&config.history_file, &target);
         entries.retain(|e| *e != target);
@@ -152,11 +166,13 @@ fn line_prefix(line: &str, point: usize) -> &str {
 /// the ends:
 /// - "up"/"down": cycle; from "nothing selected" land on the last/first
 ///   match.
-/// - "stay": exact no-op, used to redraw (e.g. Tab's no-op still needs to
-///   repaint over the DEBUG-trap's spurious clear — see bashgen.rs's
-///   `tab_noop_handler`).
-/// - "delete": like "stay" but clamped to the new (possibly shrunk)
-///   `count`, since deleting the selected entry can change the match count.
+/// - "stay": keeps the selection, used to redraw (e.g. Tab's no-op still
+///   needs to repaint over the DEBUG-trap's spurious clear — see
+///   bashgen.rs's `tab_noop_handler`).
+/// - "delete": same as "stay".
+///
+/// "stay"/"delete" clamp to `count`: a delete, or another shell rewriting
+/// history, can shrink the match list.
 /// - anything else ("none", typing): clears the selection.
 fn next_selected(current: Option<usize>, count: usize, direction: &str) -> Option<usize> {
     if count == 0 {
@@ -171,8 +187,7 @@ fn next_selected(current: Option<usize>, count: usize, direction: &str) -> Optio
             None => count - 1,
             Some(i) => (i + count - 1) % count,
         }),
-        "stay" => current,
-        "delete" => current.map(|i| i.min(count - 1)),
+        "stay" | "delete" => current.map(|i| i.min(count - 1)),
         _ => None,
     }
 }
@@ -233,6 +248,12 @@ mod tests {
     }
 
     #[test]
+    fn stay_clamps_when_matches_shrank() {
+        // Another shell deleted entries since the last render.
+        assert_eq!(next_selected(Some(2), 2, "stay"), Some(1));
+    }
+
+    #[test]
     fn delete_keeps_index_when_still_in_bounds() {
         assert_eq!(next_selected(Some(1), 3, "delete"), Some(1));
     }
@@ -264,7 +285,7 @@ mod tests {
         let config = test_config(path.clone());
 
         // Matches are most-recent-first, so index 0 is "git push".
-        let result = cmd_render(&config, "git", "3", "0", "delete");
+        let result = cmd_render(&config, "git", "3", "0", "delete", "git push");
 
         assert_eq!(
             std::fs::read_to_string(&path).unwrap(),
@@ -280,11 +301,29 @@ mod tests {
     }
 
     #[test]
+    fn cmd_render_delete_removes_highlighted_entry_after_concurrent_append() {
+        let path = temp_history_file("main", "git status\ngit commit\ngit push\n");
+        let config = test_config(path.clone());
+
+        // Index 0 is "git push" when highlighted; then another shell's
+        // `history -a` shifts it to index 1.
+        std::fs::write(&path, "git status\ngit commit\ngit push\ngit pull\n").unwrap();
+        cmd_render(&config, "git", "3", "0", "delete", "git push");
+
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            "git status\ngit commit\ngit pull\n"
+        );
+
+        std::fs::remove_file(&path).unwrap();
+    }
+
+    #[test]
     fn cmd_render_delete_with_nothing_selected_does_not_touch_disk() {
         let path = temp_history_file("main", "git status\ngit commit\n");
         let config = test_config(path.clone());
 
-        cmd_render(&config, "git", "3", "", "delete");
+        cmd_render(&config, "git", "3", "", "delete", "");
 
         assert_eq!(
             std::fs::read_to_string(&path).unwrap(),
